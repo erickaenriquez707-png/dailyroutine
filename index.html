@@ -28,6 +28,8 @@ button:focus-visible,input:focus-visible,select:focus-visible{outline:3px solid 
 .bar{height:8px;background:var(--line);border-radius:8px;margin:22px 0 6px;overflow:hidden}
 .bar i{display:block;height:100%;width:0;background:var(--ink);border-radius:8px;transition:width .3s}
 .sum{color:var(--mute);font-size:14px}
+.toggle-row{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-top:4px}
+#hideBtn{padding:6px 10px;min-height:34px;font-size:13px}
 .cal{margin-top:14px;background:var(--card);border:1px solid var(--line);border-radius:14px;padding:12px;display:none}
 .cal.open{display:block}
 .calhead{display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;font-weight:600}
@@ -59,6 +61,16 @@ form .add{background:var(--ink);color:var(--on);border:0;font-weight:600}
 li.task{display:grid;grid-template-columns:22px minmax(64px,auto) 1fr auto;align-items:center;gap:10px;padding:12px 0;border-top:1px solid var(--line);position:relative}
 li.task:last-child{border-bottom:1px solid var(--line)}
 .time{white-space:nowrap}
+.actions{display:flex;gap:4px;align-items:center}
+.chk{border:1px solid var(--line);background:var(--bg);border-radius:8px;min-width:34px;min-height:34px;cursor:pointer;font-size:12px;color:var(--mute)}
+.checklist{display:none;grid-column:1/-1;margin:8px 0 2px 32px}
+li.task.expanded .checklist{display:block}
+.checklist ul{list-style:none;margin:0;padding:0}
+.checklist li{display:flex;align-items:center;gap:8px;padding:4px 0}
+.checklist input[type=checkbox]{width:18px;height:18px;flex:none}
+.checklist span{flex:1;overflow-wrap:anywhere}
+.subadd{display:flex;gap:6px;margin-top:4px}
+.subadd input{flex:1;border:1px solid var(--line);background:var(--bg);border-radius:8px;padding:6px 8px;min-height:34px}
 .grip{cursor:grab;color:var(--mute);touch-action:none;user-select:none;font-size:18px;line-height:1;text-align:center}
 li.task.dragging{opacity:.4}
 li.task.over-top::before,li.task.over-bottom::after{content:"";position:absolute;left:0;right:0;height:3px;background:var(--ink);border-radius:3px}
@@ -102,7 +114,10 @@ li.done label span{text-decoration:line-through;color:var(--mute)}
 
   <div class="bar" role="progressbar" aria-label="Day progress" aria-valuemin="0" aria-valuemax="100" id="pb"><i id="fill"></i></div>
   <div class="sum" id="sum"></div>
-  <div class="sum" id="syncLabel">Saved on this device</div>
+  <div class="toggle-row">
+    <div class="sum">Saved on this device</div>
+    <button class="btn" id="hideBtn" aria-pressed="false">Hide completed</button>
+  </div>
 
   <div class="tabs" id="tabs"></div>
 
@@ -161,10 +176,10 @@ const key=d=>'routine:'+ds(d);
 const rd=(k,f)=>{try{const v=JSON.parse(localStorage.getItem(k));return v==null?f:v}catch(e){return f}};
 const wr=(k,v)=>{try{localStorage.setItem(k,JSON.stringify(v))}catch(e){}};
 let items=rd(key(date),[]),repeats=rd('routine:repeats',[]),doneR=rd('routine-done:'+ds(date),[]);
-let dbCol=null,dbReady=false,myUid=null,dbGen=0;
-const save=()=>{wr(key(date),items);if(dbReady)dbCol.doc('day_'+ds(date)).set({items}).catch(()=>{})};
-const saveR=()=>{wr('routine:repeats',repeats);if(dbReady)dbCol.doc('repeats').set({list:repeats}).catch(()=>{})};
-const saveD=()=>{wr('routine-done:'+ds(date),doneR);if(dbReady)dbCol.doc('done_'+ds(date)).set({ids:doneR}).catch(()=>{})};
+let hideDone=rd('routine:hideDone2',true);
+const save=()=>wr(key(date),items);
+const saveR=()=>wr('routine:repeats',repeats);
+const saveD=()=>wr('routine-done:'+ds(date),doneR);
 const fmt=t=>{if(!t)return'Anytime';const[h,m]=t.split(':').map(Number);return(h%12||12)+':'+String(m).padStart(2,'0')+(h<12?' AM':' PM')};
 const fmt2=(t,t2)=>!t?'Anytime':t2?fmt(t)+' \u2013 '+fmt(t2):fmt(t);
 const uid=()=>Date.now().toString(36)+Math.random().toString(36).slice(2,6);
@@ -173,44 +188,8 @@ const applies=(r,d)=>{const s=ds(d),w=d.getDay();if(s<r.start||(r.end&&s>r.end))
   return r.rule==='range'||r.rule==='daily'||(r.rule==='weekdays'&&w>0&&w<6)||(r.rule==='weekends'&&(w===0||w===6))||(r.rule==='weekly'&&w===r.wd);};
 const view=()=>items.map(i=>({...i,ref:i,rep:false,p:i.p||partOf(i.t)||'morning'}))
   .concat(repeats.filter(r=>applies(r,date)).map(r=>({...r,done:doneR.includes(r.id),ref:r,rep:true,p:r.p||partOf(r.t)||'morning'})));
-function go(d){date=d;calMonth=new Date(d);items=rd(key(d),[]);doneR=rd('routine-done:'+ds(d),[]);render();syncDay(d)}
+function go(d){date=d;calMonth=new Date(d);items=rd(key(d),[]);doneR=rd('routine-done:'+ds(d),[]);render()}
 function shift(n){const d=new Date(date);d.setDate(d.getDate()+n);go(d)}
-
-async function syncRepeats(){
-  if(!dbReady)return;
-  const mine=dbGen;
-  try{
-    const snap=await dbCol.doc('repeats').get();
-    if(mine!==dbGen)return;
-    if(snap.exists){repeats=snap.data().list||[];wr('routine:repeats',repeats)}
-    else if(repeats.length){await dbCol.doc('repeats').set({list:repeats})}
-  }catch(e){}
-  render();
-}
-async function syncDay(d){
-  if(!dbReady)return;
-  const dstr=ds(d),mine=dbGen;
-  try{
-    const[dayS,doneS]=await Promise.all([dbCol.doc('day_'+dstr).get(),dbCol.doc('done_'+dstr).get()]);
-    if(mine!==dbGen||ds(date)!==dstr)return;
-    if(dayS.exists){items=dayS.data().items||[];wr(key(d),items)}else if(items.length){await dbCol.doc('day_'+dstr).set({items})}
-    if(doneS.exists){doneR=doneS.data().ids||[];wr('routine-done:'+dstr,doneR)}else if(doneR.length){await dbCol.doc('done_'+dstr).set({ids:doneR})}
-  }catch(e){}
-  render();
-}
-async function initSync(){
-  if(!window.claude)return;
-  dbGen++;
-  const[db,user]=await Promise.all([window.claude.use('db'),window.claude.use('user')]);
-  if(!db||!user)return;
-  myUid=await user.id();
-  if(!myUid)return;
-  dbCol=db.collection('data/users/'+myUid);
-  dbReady=true;
-  const lab=$('syncLabel');if(lab)lab.textContent='Synced to your account';
-  await syncRepeats();
-  await syncDay(date);
-}
 
 let dragRef=null,dragEl=null;
 function row(i){
@@ -232,11 +211,40 @@ function row(i){
   const w=document.createElement('span'),em=document.createElement('em');
   em.textContent=CATS[i.cat]+(i.sub?' \u00b7 '+i.sub:'')+(i.rep?', '+ruleLabel(i):'');
   w.append(em,i.text);lab.append(cb,w);
+  const list=i.checklist||[];
+  const actions=document.createElement('div');actions.className='actions';
+  if(list.length||true){
+    const chk=document.createElement('button');chk.type='button';chk.className='chk';
+    chk.setAttribute('aria-label','Checklist for '+i.text);
+    chk.textContent=list.length?list.filter(z=>z.done).length+'/'+list.length:'\u2611';
+    chk.onclick=()=>{li.classList.toggle('expanded')};
+    actions.appendChild(chk);
+  }
   const del=document.createElement('button');del.className='del';del.textContent='\u00d7';
   del.setAttribute('aria-label','Delete '+i.text);
   del.title=i.rep?'Delete on every connected day':'Delete';
   del.onclick=()=>{if(i.rep)repeats=repeats.filter(z=>z.id!==i.ref.id);else items=items.filter(z=>z.id!==i.id);save();saveR();render()};
-  li.append(grip,time,lab,del);return li;
+  actions.appendChild(del);
+  li.append(grip,time,lab,actions);
+
+  const panel=document.createElement('div');panel.className='checklist';
+  const subUl=document.createElement('ul');
+  list.forEach(s=>{
+    const sl=document.createElement('li');
+    const scb=document.createElement('input');scb.type='checkbox';scb.checked=s.done;
+    scb.onchange=()=>{s.done=scb.checked;i.rep?saveR():save();render()};
+    const stxt=document.createElement('span');stxt.textContent=s.text;if(s.done)stxt.style.textDecoration='line-through';
+    const sdel=document.createElement('button');sdel.className='del';sdel.textContent='\u00d7';sdel.setAttribute('aria-label','Remove '+s.text);
+    sdel.onclick=()=>{i.ref.checklist=(i.ref.checklist||[]).filter(z=>z.id!==s.id);i.rep?saveR():save();render()};
+    sl.append(scb,stxt,sdel);subUl.appendChild(sl);
+  });
+  const addRow=document.createElement('div');addRow.className='subadd';
+  const sin=document.createElement('input');sin.type='text';sin.placeholder='Add checklist item';sin.maxLength=80;
+  const sbtn=document.createElement('button');sbtn.type='button';sbtn.className='btn';sbtn.textContent='Add';
+  const addSub=()=>{const t=sin.value.trim();if(!t)return;i.ref.checklist=(i.ref.checklist||[]).concat({id:uid(),text:t,done:false});sin.value='';i.rep?saveR():save();render()};
+  sbtn.onclick=addSub;sin.onkeydown=e=>{if(e.key==='Enter'){e.preventDefault();addSub()}};
+  addRow.append(sin,sbtn);panel.append(subUl,addRow);li.appendChild(panel);
+  return li;
 }
 
 function moveToGroup(a,targetP){
@@ -285,6 +293,8 @@ function render(){
   const all=view(),done=all.filter(i=>i.done).length,pct=all.length?Math.round(done/all.length*100):0;
   $('fill').style.width=pct+'%';$('pb').setAttribute('aria-valuenow',pct);
   $('sum').textContent=all.length?done+' of '+all.length+' done':'No items planned yet';
+  $('hideBtn').setAttribute('aria-pressed',hideDone);
+  $('hideBtn').textContent=hideDone?'Show completed':'Hide completed';
 
   const tabs=$('tabs');tabs.innerHTML='';
   [['all','All']].concat(Object.entries(CATS)).forEach(([k,label])=>{
@@ -311,6 +321,7 @@ function render(){
   }
   PARTS.forEach(([pk,name,range])=>{
     const g=shown.filter(i=>i.p===pk).sort((a,b)=>a.order-b.order);
+    const visible=hideDone?g.filter(i=>!i.done):g;
     const grp=document.createElement('div');grp.className='group';
     const h=document.createElement('div');h.className='part';
     h.innerHTML='<h2></h2><span></span><small></small>';
@@ -320,8 +331,10 @@ function render(){
     ul.addEventListener('dragover',e=>{if(!dragRef)return;e.preventDefault();ul.classList.add('over-empty')});
     ul.addEventListener('dragleave',e=>{if(e.target===ul)ul.classList.remove('over-empty')});
     ul.addEventListener('drop',e=>{ul.classList.remove('over-empty');if(e.target!==ul||!dragRef)return;e.preventDefault();moveToGroup(dragRef,pk)});
-    if(g.length)g.forEach(i=>ul.appendChild(row(i)));
-    else{const hint=document.createElement('div');hint.className='hint';hint.textContent='Drop a task here to move it to '+name.toLowerCase();ul.appendChild(hint)}
+    if(visible.length)visible.forEach(i=>ul.appendChild(row(i)));
+    else{const hint=document.createElement('div');hint.className='hint';
+      hint.textContent=g.length?'All done here \u2014 hidden by the completed filter':'Drop a task here to move it to '+name.toLowerCase();
+      ul.appendChild(hint)}
     grp.append(h,ul);list.appendChild(grp);
   });
 }
@@ -352,8 +365,8 @@ $('today').onclick=()=>{const d=new Date();d.setHours(12,0,0,0);go(d)};
 $('calBtn').onclick=()=>{const open=$('cal').classList.toggle('open');$('calBtn').setAttribute('aria-pressed',open);if(open){calMonth=new Date(date);renderCal()}};
 $('calPrev').onclick=()=>{calMonth.setMonth(calMonth.getMonth()-1);renderCal()};
 $('calNext').onclick=()=>{calMonth.setMonth(calMonth.getMonth()+1);renderCal()};
+$('hideBtn').onclick=()=>{hideDone=!hideDone;wr('routine:hideDone2',hideDone);render()};
 render();
-initSync();
 </script>
 </body>
 </html>
