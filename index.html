@@ -13,7 +13,15 @@ box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:en
 html{scroll-padding-top:env(safe-area-inset-top,0px)}
 *{box-sizing:border-box}
 body{margin:0;background:var(--bg);color:var(--ink);font:400 16px/1.4 Figtree,system-ui,sans-serif}
-.wrap{max-width:640px;margin:0 auto;padding:20px 16px 48px}
+.wrap{max-width:640px;margin:0 auto;padding:20px 16px 84px}
+.duetab{position:fixed;left:0;right:0;bottom:0;background:var(--card);border-top:1px solid var(--line);z-index:20;padding-bottom:env(safe-area-inset-bottom,0px);box-shadow:0 -4px 16px rgba(0,0,0,.08)}
+.duehead{width:100%;display:flex;align-items:center;justify-content:center;gap:8px;padding:10px 16px;border:0;background:transparent;cursor:pointer;font-weight:700;min-height:44px;color:var(--ink)}
+.duebadge{background:var(--relationship);color:#fff;border-radius:999px;padding:2px 9px;font-size:12px;min-width:20px;text-align:center}
+.duetab.empty .duebadge{background:var(--line);color:var(--mute)}
+.duelist{display:none;max-height:38vh;overflow-y:auto;padding:0 16px 12px;border-top:1px solid var(--line)}
+.duetab.open .duelist{display:block}
+.duerow{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid var(--line);font-size:14px}
+.duerow:last-child{border-bottom:0}
 header{display:flex;align-items:flex-end;gap:14px;flex-wrap:wrap}
 .num{font:800 92px/.85 'Bricolage Grotesque',Figtree,sans-serif;letter-spacing:-3px}
 .dm{flex:1;min-width:140px}
@@ -46,7 +54,7 @@ button:focus-visible,input:focus-visible,select:focus-visible{outline:3px solid 
 .tab small{opacity:.75}
 form{display:grid;grid-template-columns:1fr 1fr;gap:8px;background:var(--card);border:1px solid var(--line);border-radius:14px;padding:10px}
 form input,form select{border:1px solid var(--line);background:var(--bg);border-radius:8px;padding:8px 10px;min-height:40px;min-width:0}
-form .task,form .add,.range{grid-column:1/-1}
+form .task,form .add,.range,#mday{grid-column:1/-1}
 .range{display:grid;grid-template-columns:1fr 1fr;gap:8px}
 form .add{background:var(--ink);color:var(--on);border:0;font-weight:600}
 #list{margin-top:18px}
@@ -71,6 +79,12 @@ li.task.expanded .checklist{display:block}
 .checklist span{flex:1;overflow-wrap:anywhere}
 .subadd{display:flex;gap:6px;margin-top:4px}
 .subadd input{flex:1;border:1px solid var(--line);background:var(--bg);border-radius:8px;padding:6px 8px;min-height:34px}
+.due{display:inline-block;margin-left:8px;padding:1px 8px;border-radius:999px;font-size:12px;font-weight:600;border:1px solid var(--line);color:var(--mute)}
+.due.due-soon{color:var(--wealth);border-color:var(--wealth)}
+.due.due-over{color:var(--relationship);border-color:var(--relationship)}
+.editpanel{display:none;grid-column:1/-1;margin:10px 0 2px 32px;flex-direction:column;gap:8px}
+li.task.editing .editpanel{display:flex}
+.editpanel input,.editpanel select{border:1px solid var(--line);background:var(--bg);border-radius:8px;padding:8px 10px;min-height:40px}
 .grip{cursor:grab;color:var(--mute);touch-action:none;user-select:none;font-size:18px;line-height:1;text-align:center}
 li.task.dragging{opacity:.4}
 li.task.over-top::before,li.task.over-bottom::after{content:"";position:absolute;left:0;right:0;height:3px;background:var(--ink);border-radius:3px}
@@ -129,8 +143,10 @@ li.done label span{text-decoration:line-through;color:var(--mute)}
       <option value="morning">Morning</option>
       <option value="noon">Noon</option>
       <option value="afternoon">Afternoon</option>
-      <option value="night">Night</option>
+      <option value="night">Evening</option>
+      <option value="unsorted">Unorganized</option>
     </select>
+    <input type="date" id="due" aria-label="Due date (optional)" placeholder="Due date">
     <select id="c" aria-label="Category">
       <option value="health">Health</option>
       <option value="relationship">Relationship</option>
@@ -147,8 +163,10 @@ li.done label span{text-decoration:line-through;color:var(--mute)}
       <option value="weekdays">Weekdays</option>
       <option value="weekends">Weekends</option>
       <option value="weekly">Every week</option>
+      <option value="monthly">Every month (specific date)</option>
       <option value="range">Specific dates</option>
     </select>
+    <input id="mday" type="number" min="1" max="31" placeholder="Day of month (1\u201331)" style="display:none">
     <div class="range" id="rangeWrap" style="display:none">
       <input type="date" id="ds1" aria-label="Start date">
       <input type="date" id="de1" aria-label="End date">
@@ -159,14 +177,21 @@ li.done label span{text-decoration:line-through;color:var(--mute)}
   <div id="list"></div>
 </div>
 
+<div class="duetab" id="dueTab">
+  <button type="button" class="duehead" id="dueToggle" aria-expanded="false">
+    <span>&#9200; Due</span><span class="duebadge" id="dueCount">0</span>
+  </button>
+  <div class="duelist" id="dueList"></div>
+</div>
+
 <script>
 const CATS={health:'Health',relationship:'Relationship',wealth:'Wealth'};
-const PARTS=[['morning','Morning','5 AM to 11 AM'],['noon','Noon','11 AM to 2 PM'],['afternoon','Afternoon','2 PM to 6 PM'],['night','Night','6 PM to 5 AM']];
+const PARTS=[['morning','Morning','5 AM to 11 AM'],['noon','Noon','11 AM to 2 PM'],['afternoon','Afternoon','2 PM to 6 PM'],['night','Evening','6 PM to 5 AM'],['unsorted','Unorganized','No time set']];
 const RULES={daily:'every day',weekdays:'weekdays',weekends:'weekends',weekly:'every week'};
 const monthShort=d=>d.toLocaleDateString('en-US',{month:'short',day:'numeric'});
 const fmtRange=(s,e)=>{const a=new Date(s+'T12:00'),b=new Date((e||s)+'T12:00');
   return s===e||!e?monthShort(a):(a.getMonth()===b.getMonth()?a.toLocaleDateString('en-US',{month:'short'})+' '+a.getDate()+'\u2013'+b.getDate():monthShort(a)+'\u2013'+monthShort(b))};
-const ruleLabel=i=>i.rule==='range'?fmtRange(i.start,i.end):RULES[i.rule];
+const ruleLabel=i=>i.rule==='range'?fmtRange(i.start,i.end):i.rule==='monthly'?'day '+i.day+' of month':RULES[i.rule];
 const $=id=>document.getElementById(id);
 let date=new Date();date.setHours(12,0,0,0);
 let calMonth=new Date(date);
@@ -183,10 +208,20 @@ const saveR=()=>{wr('routine:repeats',repeats);if(dbReady)sharedCol.doc('repeats
 const saveD=()=>{wr('routine-done:'+ds(date),doneR);if(dbReady)sharedCol.doc('done_'+ds(date)).set({ids:doneR}).catch(()=>{})};
 const fmt=t=>{if(!t)return'Anytime';const[h,m]=t.split(':').map(Number);return(h%12||12)+':'+String(m).padStart(2,'0')+(h<12?' AM':' PM')};
 const fmt2=(t,t2)=>!t?'Anytime':t2?fmt(t)+' \u2013 '+fmt(t2):fmt(t);
+const dueInfo=due=>{
+  if(!due)return null;
+  const now=new Date();now.setHours(12,0,0,0);
+  const d=new Date(due+'T12:00');
+  const days=Math.round((d-now)/86400000);
+  if(days<0)return{label:Math.abs(days)+' day'+(Math.abs(days)===1?'':'s')+' overdue',cls:'due-over'};
+  if(days===0)return{label:'Due today',cls:'due-soon'};
+  if(days===1)return{label:'Due tomorrow',cls:'due-soon'};
+  return{label:days+' days left',cls:days<=3?'due-soon':'due-ok'};
+};
 const uid=()=>Date.now().toString(36)+Math.random().toString(36).slice(2,6);
 const partOf=t=>{if(!t)return null;const m=+t.slice(0,2)*60+ +t.slice(3,5);return m>=300&&m<660?'morning':m>=660&&m<840?'noon':m>=840&&m<1080?'afternoon':'night'};
 const applies=(r,d)=>{const s=ds(d),w=d.getDay();if(s<r.start||(r.end&&s>r.end))return false;
-  return r.rule==='range'||r.rule==='daily'||(r.rule==='weekdays'&&w>0&&w<6)||(r.rule==='weekends'&&(w===0||w===6))||(r.rule==='weekly'&&w===r.wd);};
+  return r.rule==='range'||r.rule==='daily'||(r.rule==='weekdays'&&w>0&&w<6)||(r.rule==='weekends'&&(w===0||w===6))||(r.rule==='weekly'&&w===r.wd)||(r.rule==='monthly'&&d.getDate()===r.day);};
 const view=()=>items.map(i=>({...i,ref:i,rep:false,p:i.p||partOf(i.t)||'morning'}))
   .concat(repeats.filter(r=>applies(r,date)).map(r=>({...r,done:doneR.includes(r.id),ref:r,rep:true,p:r.p||partOf(r.t)||'morning'})));
 function go(d){date=d;calMonth=new Date(d);items=rd(key(d),[]);doneR=rd('routine-done:'+ds(d),[]);render();subscribeDay(d)}
@@ -243,7 +278,10 @@ function row(i){
   cb.onchange=()=>{if(i.rep){doneR=cb.checked?doneR.concat(i.id):doneR.filter(z=>z!==i.id);saveD()}else{i.ref.done=cb.checked;save()}render()};
   const w=document.createElement('span'),em=document.createElement('em');
   em.textContent=CATS[i.cat]+(i.sub?' \u00b7 '+i.sub:'')+(i.rep?', '+ruleLabel(i):'');
-  w.append(em,i.text);lab.append(cb,w);
+  w.append(em,i.text);
+  const dueI=dueInfo(i.due);
+  if(dueI){const dc=document.createElement('span');dc.className='due '+dueI.cls;dc.textContent=dueI.label;w.appendChild(dc)}
+  lab.append(cb,w);
   const list=i.checklist||[];
   const actions=document.createElement('div');actions.className='actions';
   if(list.length||true){
@@ -253,12 +291,46 @@ function row(i){
     chk.onclick=()=>{li.classList.toggle('expanded')};
     actions.appendChild(chk);
   }
+  const edit=document.createElement('button');edit.type='button';edit.className='chk';edit.textContent='\u270e';
+  edit.setAttribute('aria-label','Edit '+i.text);
+  edit.onclick=()=>{li.classList.toggle('editing')};
+  actions.appendChild(edit);
   const del=document.createElement('button');del.className='del';del.textContent='\u00d7';
   del.setAttribute('aria-label','Delete '+i.text);
   del.title=i.rep?'Delete on every connected day':'Delete';
   del.onclick=()=>{if(i.rep)repeats=repeats.filter(z=>z.id!==i.ref.id);else items=items.filter(z=>z.id!==i.id);save();saveR();render()};
   actions.appendChild(del);
   li.append(grip,time,lab,actions);
+
+  const ep=document.createElement('div');ep.className='editpanel';
+  const eText=document.createElement('input');eText.type='text';eText.value=i.text;eText.maxLength=120;eText.setAttribute('aria-label','Edit task text');
+  const eRow1=document.createElement('div');eRow1.className='range';
+  const eT=document.createElement('input');eT.type='time';eT.value=i.t||'';eT.setAttribute('aria-label','Edit start time');
+  const eT2=document.createElement('input');eT2.type='time';eT2.value=i.t2||'';eT2.setAttribute('aria-label','Edit end time');
+  eRow1.append(eT,eT2);
+  const eP=document.createElement('select');eP.setAttribute('aria-label','Edit part of day');
+  PARTS.forEach(([pk,name])=>{const o=document.createElement('option');o.value=pk;o.textContent=name;if(pk===i.p)o.selected=true;eP.appendChild(o)});
+  const eC=document.createElement('select');eC.setAttribute('aria-label','Edit category');
+  Object.entries(CATS).forEach(([ck,name])=>{const o=document.createElement('option');o.value=ck;o.textContent=name;if(ck===i.cat)o.selected=true;eC.appendChild(o)});
+  const eSub=document.createElement('select');eSub.setAttribute('aria-label','Edit subcategory');eSub.style.display=i.cat==='wealth'?'':'none';
+  ['','Career','Education'].forEach(s=>{const o=document.createElement('option');o.value=s;o.textContent=s||'General';if(s===(i.sub||''))o.selected=true;eSub.appendChild(o)});
+  eC.onchange=()=>{eSub.style.display=eC.value==='wealth'?'':'none'};
+  const eDue=document.createElement('input');eDue.type='date';eDue.value=i.due||'';eDue.setAttribute('aria-label','Edit due date');
+  const eSave=document.createElement('button');eSave.type='button';eSave.className='btn add';eSave.textContent='Save changes';
+  eSave.onclick=()=>{
+    const t=eText.value.trim();if(!t)return;
+    const newDue=eDue.value;
+    Object.assign(i.ref,{text:t,t:eT.value,t2:eT2.value,p:eP.value,cat:eC.value,sub:eC.value==='wealth'?eSub.value:'',due:newDue});
+    if(i.rep){saveR();li.classList.remove('editing');render();return}
+    if(newDue&&newDue!==ds(date)){
+      items=items.filter(z=>z.id!==i.ref.id);save();
+      const dkey='routine:'+newDue;const arr=rd(dkey,[]);arr.push(i.ref);wr(dkey,arr);
+      go(new Date(newDue+'T12:00'));return;
+    }
+    save();li.classList.remove('editing');render();
+  };
+  ep.append(eText,eRow1,eP,eC,eSub,eDue,eSave);
+  li.appendChild(ep);
 
   const panel=document.createElement('div');panel.className='checklist';
   const subUl=document.createElement('ul');
@@ -316,6 +388,34 @@ function renderCal(){
   }
 }
 
+function allDueItems(){
+  const todayStr=ds(new Date());
+  const doneToday=rd('routine-done:'+todayStr,[]);
+  const out=[];
+  Object.keys(localStorage).forEach(k=>{
+    if(/^routine:\d{4}-\d{2}-\d{2}$/.test(k)){
+      rd(k,[]).forEach(it=>{if(it.due&&!it.done)out.push({text:it.text,due:it.due})});
+    }
+  });
+  repeats.forEach(r=>{if(r.due&&!doneToday.includes(r.id))out.push({text:r.text,due:r.due})});
+  out.sort((a,b)=>a.due.localeCompare(b.due));
+  return out;
+}
+function renderDueTab(){
+  const due=allDueItems();
+  const tab=$('dueTab');
+  tab.classList.toggle('empty',!due.length);
+  $('dueCount').textContent=due.length;
+  const list=$('dueList');list.innerHTML='';
+  if(!due.length){const h=document.createElement('div');h.className='hint';h.textContent='Nothing due right now.';list.appendChild(h);return}
+  due.slice(0,10).forEach(it=>{
+    const info=dueInfo(it.due);
+    const row=document.createElement('div');row.className='duerow';
+    const t=document.createElement('span');t.textContent=it.text;
+    const b=document.createElement('span');b.className='due '+(info?info.cls:'');b.textContent=info?info.label:'';
+    row.append(t,b);list.appendChild(row);
+  });
+}
 function render(){
   $('num').textContent=date.getDate();
   $('day').textContent=date.toLocaleDateString('en-US',{weekday:'long'});
@@ -370,26 +470,41 @@ function render(){
       ul.appendChild(hint)}
     grp.append(h,ul);list.appendChild(grp);
   });
+  renderDueTab();
 }
 
 $('c').addEventListener('change',()=>{$('sub').style.display=$('c').value==='wealth'?'':'none'});
 $('r').addEventListener('change',()=>{
-  const isRange=$('r').value==='range';
+  const v=$('r').value,isRange=v==='range';
   $('rangeWrap').style.display=isRange?'':'none';
+  $('mday').style.display=v==='monthly'?'':'none';
   if(isRange&&!$('ds1').value){$('ds1').value=ds(date);$('de1').value=ds(date)}
+  if(v==='monthly'&&!$('mday').value)$('mday').value=date.getDate();
 });
 $('f').addEventListener('submit',e=>{
   e.preventDefault();
   const text=$('x').value.trim();if(!text)return;
   const rule=$('r').value,cat=$('c').value;
-  const base={id:uid(),text,t:$('t').value,t2:$('t2').value,cat,sub:cat==='wealth'?$('sub').value:'',p:$('p').value};
-  if(rule==='once'){items.push({...base,done:false});save()}
+  const base={id:uid(),text,t:$('t').value,t2:$('t2').value,cat,sub:cat==='wealth'?$('sub').value:'',p:$('p').value,due:$('due').value};
+  let landedOn=null;
+  if(rule==='once'){
+    const due=base.due;
+    if(due&&due!==ds(date)){
+      const dkey='routine:'+due;const arr=rd(dkey,[]);arr.push({...base,done:false});wr(dkey,arr);landedOn=due;
+    }else{items.push({...base,done:false});save()}
+  }
   else if(rule==='range'){
     const start=$('ds1').value||ds(date),end=$('de1').value||start;
     repeats.push({...base,rule,start,end:end<start?start:end});saveR();
   }
+  else if(rule==='monthly'){
+    const day=Math.min(31,Math.max(1,+$('mday').value||date.getDate()));
+    repeats.push({...base,rule,start:ds(date),day});saveR();
+  }
   else{repeats.push({...base,rule,start:ds(date),wd:date.getDay()});saveR()}
-  $('x').value='';$('t2').value='';render();$('x').focus();
+  $('x').value='';$('t2').value='';$('due').value='';
+  if(landedOn){go(new Date(landedOn+'T12:00'))}else render();
+  $('x').focus();
 });
 $('t').addEventListener('change',()=>{const p=partOf($('t').value);if(p)$('p').value=p});
 $('prev').onclick=()=>shift(-1);
@@ -399,6 +514,7 @@ $('calBtn').onclick=()=>{const open=$('cal').classList.toggle('open');$('calBtn'
 $('calPrev').onclick=()=>{calMonth.setMonth(calMonth.getMonth()-1);renderCal()};
 $('calNext').onclick=()=>{calMonth.setMonth(calMonth.getMonth()+1);renderCal()};
 $('hideBtn').onclick=()=>{hideDone=!hideDone;wr('routine:hideDone2',hideDone);render()};
+$('dueToggle').onclick=()=>{const open=$('dueTab').classList.toggle('open');$('dueToggle').setAttribute('aria-expanded',open)};
 render();
 initSync();
 </script>
