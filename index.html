@@ -6,20 +6,28 @@
 <title>Daily Routine</title>
 <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,800&family=Figtree:wght@400;600&display=swap" rel="stylesheet">
 <style>
-:root{--bg:#F1F4F7;--card:#fff;--ink:#14213D;--mute:#5B667A;--line:#DCE2EA;--health:#12876A;--relationship:#C93A73;--wealth:#B98100;--on:#fff;
+:root{--bg:#F1F4F7;--card:#fff;--ink:#14213D;--mute:#5B667A;--line:#DCE2EA;--health:#12876A;--relationship:#C93A73;--wealth:#B98100;--university:#3B6FD6;--on:#fff;
 box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
-@media(prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#0E1526;--card:#172038;--ink:#EAF0FA;--mute:#98A4BB;--line:#2A3552;--health:#3FCFA5;--relationship:#F27AA6;--wealth:#F2BE3A;--on:#0E1526}}
-:root[data-theme="dark"]{--bg:#0E1526;--card:#172038;--ink:#EAF0FA;--mute:#98A4BB;--line:#2A3552;--health:#3FCFA5;--relationship:#F27AA6;--wealth:#F2BE3A;--on:#0E1526}
+@media(prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#0E1526;--card:#172038;--ink:#EAF0FA;--mute:#98A4BB;--line:#2A3552;--health:#3FCFA5;--relationship:#F27AA6;--wealth:#F2BE3A;--university:#7FA6FF;--on:#0E1526}}
+:root[data-theme="dark"]{--bg:#0E1526;--card:#172038;--ink:#EAF0FA;--mute:#98A4BB;--line:#2A3552;--health:#3FCFA5;--relationship:#F27AA6;--wealth:#F2BE3A;--university:#7FA6FF;--on:#0E1526}
 html{scroll-padding-top:env(safe-area-inset-top,0px)}
 *{box-sizing:border-box}
 body{margin:0;background:var(--bg);color:var(--ink);font:400 16px/1.4 Figtree,system-ui,sans-serif}
 .wrap{max-width:640px;margin:0 auto;padding:20px 16px 84px}
 .duetab{position:fixed;left:0;right:0;bottom:0;background:var(--card);border-top:1px solid var(--line);z-index:20;padding-bottom:env(safe-area-inset-bottom,0px);box-shadow:0 -4px 16px rgba(0,0,0,.08)}
-.duehead{width:100%;display:flex;align-items:center;justify-content:center;gap:8px;padding:10px 16px;border:0;background:transparent;cursor:pointer;font-weight:700;min-height:44px;color:var(--ink)}
+.duebackdrop{display:none;position:fixed;inset:0;background:rgba(0,0,0,.15);z-index:19}
+.duebackdrop.show{display:block}
+.bbuttons{display:flex}
+.duehead{flex:1;display:flex;align-items:center;justify-content:center;gap:8px;padding:10px 16px;border:0;background:transparent;cursor:pointer;font-weight:700;min-height:44px;color:var(--ink)}
+.duehead[aria-expanded=true]{background:var(--bg)}
+.goalblock{border-top:1px solid var(--line);padding:10px 0}
+.goalhead{display:flex;align-items:center;justify-content:space-between;gap:8px;font-size:15px}
+.projrow{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:6px 0 6px 14px;font-size:14px;color:var(--mute)}
 .duebadge{background:var(--relationship);color:#fff;border-radius:999px;padding:2px 9px;font-size:12px;min-width:20px;text-align:center}
 .duetab.empty .duebadge{background:var(--line);color:var(--mute)}
 .duelist{display:none;max-height:38vh;overflow-y:auto;padding:0 16px 12px;border-top:1px solid var(--line)}
-.duetab.open .duelist{display:block}
+.duetab.open-due #dueList{display:block}
+.duetab.open-goals #goalsList{display:block}
 .duerow{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid var(--line);font-size:14px}
 .duerow:last-child{border-bottom:0}
 header{display:flex;align-items:flex-end;gap:14px;flex-wrap:wrap}
@@ -98,7 +106,7 @@ label em{font-style:normal;font-size:13px;color:var(--c);font-weight:600;display
 li.done label span{text-decoration:line-through;color:var(--mute)}
 .del{border:0;background:transparent;color:var(--mute);cursor:pointer;font-size:22px;line-height:1;padding:6px 10px;border-radius:8px}
 .del:hover{color:var(--ink)}
-.health{--c:var(--health)}.relationship{--c:var(--relationship)}.wealth{--c:var(--wealth)}
+.health{--c:var(--health)}.relationship{--c:var(--relationship)}.wealth{--c:var(--wealth)}.university{--c:var(--university)}
 .empty{text-align:center;color:var(--mute);padding:34px 8px;display:flex;flex-direction:column;align-items:center;gap:12px}
 @media(max-width:420px){.num{font-size:72px}li.task{grid-template-columns:18px minmax(50px,auto) 1fr auto}.time{font-size:12px}}
 @media(prefers-reduced-motion:reduce){.bar i{transition:none}}
@@ -151,7 +159,9 @@ li.done label span{text-decoration:line-through;color:var(--mute)}
       <option value="health">Health</option>
       <option value="relationship">Relationship</option>
       <option value="wealth">Wealth</option>
+      <option value="university">University</option>
     </select>
+    <select id="proj" aria-label="Project (optional)"><option value="">No project</option></select>
     <select id="sub" aria-label="Wealth subcategory" style="display:none">
       <option value="">General</option>
       <option value="Career">Career</option>
@@ -177,15 +187,22 @@ li.done label span{text-decoration:line-through;color:var(--mute)}
   <div id="list"></div>
 </div>
 
+<div class="duebackdrop" id="dueBackdrop"></div>
 <div class="duetab" id="dueTab">
-  <button type="button" class="duehead" id="dueToggle" aria-expanded="false">
-    <span>&#9200; Due</span><span class="duebadge" id="dueCount">0</span>
-  </button>
+  <div class="bbuttons">
+    <button type="button" class="duehead" id="dueToggle" aria-expanded="false">
+      <span>&#9200; Due</span><span class="duebadge" id="dueCount">0</span>
+    </button>
+    <button type="button" class="duehead" id="goalsToggle" aria-expanded="false">
+      <span>&#127919; Goals</span><span class="duebadge" id="goalsCount">0</span>
+    </button>
+  </div>
   <div class="duelist" id="dueList"></div>
+  <div class="duelist" id="goalsList"></div>
 </div>
 
 <script>
-const CATS={health:'Health',relationship:'Relationship',wealth:'Wealth'};
+const CATS={health:'Health',relationship:'Relationship',wealth:'Wealth',university:'University'};
 const PARTS=[['morning','Morning','5 AM to 11 AM'],['noon','Noon','11 AM to 2 PM'],['afternoon','Afternoon','2 PM to 6 PM'],['night','Evening','6 PM to 5 AM'],['unsorted','Unorganized','No time set']];
 const RULES={daily:'every day',weekdays:'weekdays',weekends:'weekends',weekly:'every week'};
 const monthShort=d=>d.toLocaleDateString('en-US',{month:'short',day:'numeric'});
@@ -201,6 +218,7 @@ const key=d=>'routine:'+ds(d);
 const rd=(k,f)=>{try{const v=JSON.parse(localStorage.getItem(k));return v==null?f:v}catch(e){return f}};
 const wr=(k,v)=>{try{localStorage.setItem(k,JSON.stringify(v))}catch(e){}};
 let items=rd(key(date),[]),repeats=rd('routine:repeats',[]),doneR=rd('routine-done:'+ds(date),[]);
+let goals=rd('routine:goals',[]),projects=rd('routine:projects',[]);
 let hideDone=rd('routine:hideDone2',true);
 const FIREBASE_URL='https://coding-36d73-default-rtdb.asia-southeast1.firebasedatabase.app';
 let sharedData={},fbConnected=false;
@@ -208,6 +226,8 @@ function fbWrite(k,v){return fetch(FIREBASE_URL+'/shared/'+k+'.json',{method:'PU
 const save=()=>{wr(key(date),items);fbWrite('day_'+ds(date),{items})};
 const saveR=()=>{wr('routine:repeats',repeats);fbWrite('repeats',{list:repeats})};
 const saveD=()=>{wr('routine-done:'+ds(date),doneR);fbWrite('done_'+ds(date),{ids:doneR})};
+const saveGoals=()=>{wr('routine:goals',goals);fbWrite('goals',{list:goals})};
+const saveProjects=()=>{wr('routine:projects',projects);fbWrite('projects',{list:projects})};
 const fmt=t=>{if(!t)return'Anytime';const[h,m]=t.split(':').map(Number);return(h%12||12)+':'+String(m).padStart(2,'0')+(h<12?' AM':' PM')};
 const fmt2=(t,t2)=>!t?'Anytime':t2?fmt(t)+' \u2013 '+fmt(t2):fmt(t);
 const dueInfo=due=>{
@@ -233,9 +253,12 @@ function mirrorAll(){
   Object.keys(sharedData).forEach(k=>{
     const v=sharedData[k];
     if(k==='repeats')wr('routine:repeats',v.list||[]);
+    else if(k==='goals')wr('routine:goals',v.list||[]);
+    else if(k==='projects')wr('routine:projects',v.list||[]);
     else if(k.startsWith('day_'))wr('routine:'+k.slice(4),v.items||[]);
     else if(k.startsWith('done_'))wr('routine-done:'+k.slice(5),v.ids||[]);
   });
+  goals=rd('routine:goals',[]);projects=rd('routine:projects',[]);
 }
 function applySharedDay(){
   const dstr=ds(date);
@@ -250,10 +273,12 @@ function handleFbEvent(path,data){
     const k=path.replace(/^\//,'').split('/')[0];
     if(data===null)delete sharedData[k];else sharedData[k]=data;
     if(k==='repeats')wr('routine:repeats',(sharedData[k]||{}).list||[]);
+    else if(k==='goals'){goals=(sharedData[k]||{}).list||[];wr('routine:goals',goals)}
+    else if(k==='projects'){projects=(sharedData[k]||{}).list||[];wr('routine:projects',projects)}
     else if(k.startsWith('day_'))wr('routine:'+k.slice(4),(sharedData[k]||{}).items||[]);
     else if(k.startsWith('done_'))wr('routine-done:'+k.slice(5),(sharedData[k]||{}).ids||[]);
   }
-  applySharedDay();render();
+  applySharedDay();refreshProjectSelect();renderGoalsTab();render();
 }
 function initSync(){
   const lab=document.querySelector('.toggle-row .sum');
@@ -283,7 +308,7 @@ function row(i){
   const lab=document.createElement('label'),cb=document.createElement('input');cb.type='checkbox';cb.checked=i.done;
   cb.onchange=()=>{if(i.rep){doneR=cb.checked?doneR.concat(i.id):doneR.filter(z=>z!==i.id);saveD()}else{i.ref.done=cb.checked;save()}render()};
   const w=document.createElement('span'),em=document.createElement('em');
-  em.textContent=CATS[i.cat]+(i.sub?' \u00b7 '+i.sub:'')+(i.rep?', '+ruleLabel(i):'');
+  em.textContent=CATS[i.cat]+(i.sub?' \u00b7 '+i.sub:'')+(i.proj?' \u00b7 '+i.proj:'')+(i.rep?', '+ruleLabel(i):'');
   w.append(em,i.text);
   const dueI=dueInfo(i.due);
   if(dueI){const dc=document.createElement('span');dc.className='due '+dueI.cls;dc.textContent=dueI.label;w.appendChild(dc)}
@@ -322,11 +347,13 @@ function row(i){
   ['','Career','Education'].forEach(s=>{const o=document.createElement('option');o.value=s;o.textContent=s||'General';if(s===(i.sub||''))o.selected=true;eSub.appendChild(o)});
   eC.onchange=()=>{eSub.style.display=eC.value==='wealth'?'':'none'};
   const eDue=document.createElement('input');eDue.type='date';eDue.value=i.due||'';eDue.setAttribute('aria-label','Edit due date');
+  const eProj=document.createElement('select');eProj.setAttribute('aria-label','Edit project');
+  eProj.innerHTML='<option value="">No project</option>'+projects.map(p=>'<option value="'+p.text+'"'+(p.text===(i.proj||'')?' selected':'')+'>'+p.goal+' \u203a '+p.text+'</option>').join('');
   const eSave=document.createElement('button');eSave.type='button';eSave.className='btn add';eSave.textContent='Save changes';
   eSave.onclick=()=>{
     const t=eText.value.trim();if(!t)return;
     const newDue=eDue.value;
-    Object.assign(i.ref,{text:t,t:eT.value,t2:eT2.value,p:eP.value,cat:eC.value,sub:eC.value==='wealth'?eSub.value:'',due:newDue});
+    Object.assign(i.ref,{text:t,t:eT.value,t2:eT2.value,p:eP.value,cat:eC.value,sub:eC.value==='wealth'?eSub.value:'',due:newDue,proj:eProj.value});
     if(i.rep){saveR();li.classList.remove('editing');render();return}
     if(newDue&&newDue!==ds(date)){
       items=items.filter(z=>z.id!==i.ref.id);save();
@@ -335,7 +362,7 @@ function row(i){
     }
     save();li.classList.remove('editing');render();
   };
-  ep.append(eText,eRow1,eP,eC,eSub,eDue,eSave);
+  ep.append(eText,eRow1,eP,eC,eSub,eProj,eDue,eSave);
   li.appendChild(ep);
 
   const panel=document.createElement('div');panel.className='checklist';
@@ -422,6 +449,52 @@ function renderDueTab(){
     row.append(t,b);list.appendChild(row);
   });
 }
+function projectStats(projText){
+  let total=0,done=0;
+  Object.keys(localStorage).forEach(k=>{
+    if(/^routine:\d{4}-\d{2}-\d{2}$/.test(k)){rd(k,[]).forEach(it=>{if(it.proj===projText){total++;if(it.done)done++}})}
+  });
+  repeats.forEach(r=>{if(r.proj===projText)total++});
+  return{total,done};
+}
+function refreshProjectSelect(){
+  const opts='<option value="">No project</option>'+projects.map(p=>'<option value="'+p.text+'">'+p.goal+' \u203a '+p.text+'</option>').join('');
+  ['proj'].forEach(id=>{if($(id))$(id).innerHTML=opts});
+}
+function renderGoalsTab(){
+  $('goalsCount').textContent=goals.length;
+  const list=$('goalsList');list.innerHTML='';
+  const addRow=document.createElement('div');addRow.className='subadd';
+  const gin=document.createElement('input');gin.type='text';gin.placeholder='New goal (e.g. Become financially independent)';gin.maxLength=100;
+  const gbtn=document.createElement('button');gbtn.type='button';gbtn.className='btn';gbtn.textContent='Add goal';
+  const addGoal=()=>{const t=gin.value.trim();if(!t)return;goals.push({id:uid(),text:t});saveGoals();gin.value='';renderGoalsTab()};
+  gbtn.onclick=addGoal;gin.onkeydown=e=>{if(e.key==='Enter'){e.preventDefault();addGoal()}};
+  addRow.append(gin,gbtn);list.appendChild(addRow);
+  if(!goals.length){const h=document.createElement('div');h.className='hint';h.textContent='No goals yet. Add one above \u2014 then group projects, tasks, and habits under it.';list.appendChild(h);return}
+  goals.forEach(g=>{
+    const gWrap=document.createElement('div');gWrap.className='goalblock';
+    const gHead=document.createElement('div');gHead.className='goalhead';
+    const gTitle=document.createElement('strong');gTitle.textContent=g.text;
+    const gDel=document.createElement('button');gDel.className='del';gDel.textContent='\u00d7';gDel.setAttribute('aria-label','Delete goal '+g.text);
+    gDel.onclick=()=>{goals=goals.filter(z=>z.id!==g.id);projects=projects.filter(z=>z.goal!==g.text);saveGoals();saveProjects();renderGoalsTab();refreshProjectSelect()};
+    gHead.append(gTitle,gDel);gWrap.appendChild(gHead);
+    projects.filter(p=>p.goal===g.text).forEach(p=>{
+      const stats=projectStats(p.text);
+      const pRow=document.createElement('div');pRow.className='projrow';
+      const pTxt=document.createElement('span');pTxt.textContent='\u2192 '+p.text+' ('+stats.done+'/'+stats.total+' done)';
+      const pDel=document.createElement('button');pDel.className='del';pDel.textContent='\u00d7';pDel.setAttribute('aria-label','Delete project '+p.text);
+      pDel.onclick=()=>{projects=projects.filter(z=>z.id!==p.id);saveProjects();renderGoalsTab();refreshProjectSelect()};
+      pRow.append(pTxt,pDel);gWrap.appendChild(pRow);
+    });
+    const pAdd=document.createElement('div');pAdd.className='subadd';
+    const pin=document.createElement('input');pin.type='text';pin.placeholder='New project under this goal';pin.maxLength=100;
+    const pbtn=document.createElement('button');pbtn.type='button';pbtn.className='btn';pbtn.textContent='Add project';
+    const addProj=()=>{const t=pin.value.trim();if(!t)return;projects.push({id:uid(),text:t,goal:g.text});saveProjects();pin.value='';renderGoalsTab();refreshProjectSelect()};
+    pbtn.onclick=addProj;pin.onkeydown=e=>{if(e.key==='Enter'){e.preventDefault();addProj()}};
+    pAdd.append(pin,pbtn);gWrap.appendChild(pAdd);
+    list.appendChild(gWrap);
+  });
+}
 function render(){
   $('num').textContent=date.getDate();
   $('day').textContent=date.toLocaleDateString('en-US',{weekday:'long'});
@@ -477,6 +550,7 @@ function render(){
     grp.append(h,ul);list.appendChild(grp);
   });
   renderDueTab();
+  renderGoalsTab();
 }
 
 $('c').addEventListener('change',()=>{$('sub').style.display=$('c').value==='wealth'?'':'none'});
@@ -491,7 +565,7 @@ $('f').addEventListener('submit',e=>{
   e.preventDefault();
   const text=$('x').value.trim();if(!text)return;
   const rule=$('r').value,cat=$('c').value;
-  const base={id:uid(),text,t:$('t').value,t2:$('t2').value,cat,sub:cat==='wealth'?$('sub').value:'',p:$('p').value,due:$('due').value};
+  const base={id:uid(),text,t:$('t').value,t2:$('t2').value,cat,sub:cat==='wealth'?$('sub').value:'',p:$('p').value,due:$('due').value,proj:$('proj').value};
   let landedOn=null;
   if(rule==='once'){
     const due=base.due;
@@ -520,7 +594,23 @@ $('calBtn').onclick=()=>{const open=$('cal').classList.toggle('open');$('calBtn'
 $('calPrev').onclick=()=>{calMonth.setMonth(calMonth.getMonth()-1);renderCal()};
 $('calNext').onclick=()=>{calMonth.setMonth(calMonth.getMonth()+1);renderCal()};
 $('hideBtn').onclick=()=>{hideDone=!hideDone;wr('routine:hideDone2',hideDone);render()};
-$('dueToggle').onclick=()=>{const open=$('dueTab').classList.toggle('open');$('dueToggle').setAttribute('aria-expanded',open)};
+function toggleBottom(which,btnId){
+  const tab=$('dueTab'),cls='open-'+which,isOpen=tab.classList.contains(cls);
+  tab.classList.remove('open-due','open-goals');
+  $('dueToggle').setAttribute('aria-expanded','false');$('goalsToggle').setAttribute('aria-expanded','false');
+  if(!isOpen){tab.classList.add(cls);$(btnId).setAttribute('aria-expanded','true');$('dueBackdrop').classList.add('show')}
+  else{$('dueBackdrop').classList.remove('show')}
+}
+function closeBottom(){
+  $('dueTab').classList.remove('open-due','open-goals');
+  $('dueToggle').setAttribute('aria-expanded','false');$('goalsToggle').setAttribute('aria-expanded','false');
+  $('dueBackdrop').classList.remove('show');
+}
+$('dueToggle').onclick=()=>toggleBottom('due','dueToggle');
+$('goalsToggle').onclick=()=>toggleBottom('goals','goalsToggle');
+$('dueBackdrop').onclick=closeBottom;
+refreshProjectSelect();
+renderGoalsTab();
 render();
 initSync();
 </script>
