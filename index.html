@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>index</title>
+<title>Daily Routine</title>
 <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,800&family=Figtree:wght@400;600&display=swap" rel="stylesheet">
 <style>
 :root{--bg:#F1F4F7;--card:#fff;--ink:#14213D;--mute:#5B667A;--line:#DCE2EA;--health:#12876A;--relationship:#C93A73;--wealth:#B98100;--on:#fff;
@@ -202,10 +202,12 @@ const rd=(k,f)=>{try{const v=JSON.parse(localStorage.getItem(k));return v==null?
 const wr=(k,v)=>{try{localStorage.setItem(k,JSON.stringify(v))}catch(e){}};
 let items=rd(key(date),[]),repeats=rd('routine:repeats',[]),doneR=rd('routine-done:'+ds(date),[]);
 let hideDone=rd('routine:hideDone2',true);
-let sharedCol=null,dbReady=false,unsubRepeats=null,unsubItems=null,unsubDone=null;
-const save=()=>{wr(key(date),items);if(dbReady)sharedCol.doc('day_'+ds(date)).set({items}).catch(()=>{})};
-const saveR=()=>{wr('routine:repeats',repeats);if(dbReady)sharedCol.doc('repeats').set({list:repeats}).catch(()=>{})};
-const saveD=()=>{wr('routine-done:'+ds(date),doneR);if(dbReady)sharedCol.doc('done_'+ds(date)).set({ids:doneR}).catch(()=>{})};
+const FIREBASE_URL='https://coding-36d73-default-rtdb.asia-southeast1.firebasedatabase.app';
+let sharedData={},fbConnected=false;
+function fbWrite(k,v){return fetch(FIREBASE_URL+'/shared/'+k+'.json',{method:'PUT',body:JSON.stringify(v)}).catch(()=>{})}
+const save=()=>{wr(key(date),items);fbWrite('day_'+ds(date),{items})};
+const saveR=()=>{wr('routine:repeats',repeats);fbWrite('repeats',{list:repeats})};
+const saveD=()=>{wr('routine-done:'+ds(date),doneR);fbWrite('done_'+ds(date),{ids:doneR})};
 const fmt=t=>{if(!t)return'Anytime';const[h,m]=t.split(':').map(Number);return(h%12||12)+':'+String(m).padStart(2,'0')+(h<12?' AM':' PM')};
 const fmt2=(t,t2)=>!t?'Anytime':t2?fmt(t)+' \u2013 '+fmt(t2):fmt(t);
 const dueInfo=due=>{
@@ -224,39 +226,43 @@ const applies=(r,d)=>{const s=ds(d),w=d.getDay();if(s<r.start||(r.end&&s>r.end))
   return r.rule==='range'||r.rule==='daily'||(r.rule==='weekdays'&&w>0&&w<6)||(r.rule==='weekends'&&(w===0||w===6))||(r.rule==='weekly'&&w===r.wd)||(r.rule==='monthly'&&d.getDate()===r.day);};
 const view=()=>items.map(i=>({...i,ref:i,rep:false,p:i.p||partOf(i.t)||'morning'}))
   .concat(repeats.filter(r=>applies(r,date)).map(r=>({...r,done:doneR.includes(r.id),ref:r,rep:true,p:r.p||partOf(r.t)||'morning'})));
-function go(d){date=d;calMonth=new Date(d);items=rd(key(d),[]);doneR=rd('routine-done:'+ds(d),[]);render();subscribeDay(d)}
+function go(d){date=d;calMonth=new Date(d);items=rd(key(d),[]);doneR=rd('routine-done:'+ds(d),[]);applySharedDay();render()}
 function shift(n){const d=new Date(date);d.setDate(d.getDate()+n);go(d)}
 
-function subscribeRepeats(){
-  if(!dbReady)return;
-  if(unsubRepeats)unsubRepeats();
-  unsubRepeats=sharedCol.doc('repeats').onSnapshot(snap=>{
-    repeats=snap.exists?(snap.data().list||[]):[];wr('routine:repeats',repeats);render();
-  },()=>{});
+function mirrorAll(){
+  Object.keys(sharedData).forEach(k=>{
+    const v=sharedData[k];
+    if(k==='repeats')wr('routine:repeats',v.list||[]);
+    else if(k.startsWith('day_'))wr('routine:'+k.slice(4),v.items||[]);
+    else if(k.startsWith('done_'))wr('routine-done:'+k.slice(5),v.ids||[]);
+  });
 }
-function subscribeDay(d){
-  if(!dbReady)return;
-  const dstr=ds(d);
-  if(unsubItems)unsubItems();
-  if(unsubDone)unsubDone();
-  unsubItems=sharedCol.doc('day_'+dstr).onSnapshot(snap=>{
-    if(ds(date)!==dstr)return;
-    items=snap.exists?(snap.data().items||[]):[];wr(key(date),items);render();
-  },()=>{});
-  unsubDone=sharedCol.doc('done_'+dstr).onSnapshot(snap=>{
-    if(ds(date)!==dstr)return;
-    doneR=snap.exists?(snap.data().ids||[]):[];wr('routine-done:'+dstr,doneR);render();
-  },()=>{});
+function applySharedDay(){
+  const dstr=ds(date);
+  const dayNode=sharedData['day_'+dstr],doneNode=sharedData['done_'+dstr],repNode=sharedData['repeats'];
+  if(dayNode){items=dayNode.items||[];wr(key(date),items)}
+  if(doneNode){doneR=doneNode.ids||[];wr('routine-done:'+dstr,doneR)}
+  if(repNode){repeats=repNode.list||[];wr('routine:repeats',repeats)}
 }
-async function initSync(){
-  if(!window.claude)return;
-  const db=await window.claude.use('db');
-  if(!db)return;
-  sharedCol=db.collection('shared');
-  dbReady=true;
-  const lab=document.querySelector('.toggle-row .sum');if(lab)lab.textContent='Shared \u2014 live with everyone who has access';
-  subscribeRepeats();
-  subscribeDay(date);
+function handleFbEvent(path,data){
+  if(path==='/'){sharedData=data||{};mirrorAll()}
+  else{
+    const k=path.replace(/^\//,'').split('/')[0];
+    if(data===null)delete sharedData[k];else sharedData[k]=data;
+    if(k==='repeats')wr('routine:repeats',(sharedData[k]||{}).list||[]);
+    else if(k.startsWith('day_'))wr('routine:'+k.slice(4),(sharedData[k]||{}).items||[]);
+    else if(k.startsWith('done_'))wr('routine-done:'+k.slice(5),(sharedData[k]||{}).ids||[]);
+  }
+  applySharedDay();render();
+}
+function initSync(){
+  const lab=document.querySelector('.toggle-row .sum');
+  try{
+    const es=new EventSource(FIREBASE_URL+'/shared.json');
+    es.addEventListener('put',e=>{try{const d=JSON.parse(e.data);handleFbEvent(d.path,d.data);if(!fbConnected){fbConnected=true;if(lab)lab.textContent='Shared \u2014 synced live with everyone using this file'}}catch(err){}});
+    es.addEventListener('patch',e=>{try{const d=JSON.parse(e.data);handleFbEvent(d.path,d.data)}catch(err){}});
+    es.onerror=()=>{if(lab&&!fbConnected)lab.textContent='Saved on this device (reconnecting\u2026)'};
+  }catch(e){if(lab)lab.textContent='Saved on this device'}
 }
 
 let dragRef=null,dragEl=null;
@@ -324,7 +330,7 @@ function row(i){
     if(i.rep){saveR();li.classList.remove('editing');render();return}
     if(newDue&&newDue!==ds(date)){
       items=items.filter(z=>z.id!==i.ref.id);save();
-      const dkey='routine:'+newDue;const arr=rd(dkey,[]);arr.push(i.ref);wr(dkey,arr);
+      const dkey='routine:'+newDue;const arr=rd(dkey,[]);arr.push(i.ref);wr(dkey,arr);fbWrite('day_'+newDue,{items:arr});
       go(new Date(newDue+'T12:00'));return;
     }
     save();li.classList.remove('editing');render();
@@ -490,7 +496,7 @@ $('f').addEventListener('submit',e=>{
   if(rule==='once'){
     const due=base.due;
     if(due&&due!==ds(date)){
-      const dkey='routine:'+due;const arr=rd(dkey,[]);arr.push({...base,done:false});wr(dkey,arr);landedOn=due;
+      const dkey='routine:'+due;const arr=rd(dkey,[]);arr.push({...base,done:false});wr(dkey,arr);fbWrite('day_'+due,{items:arr});landedOn=due;
     }else{items.push({...base,done:false});save()}
   }
   else if(rule==='range'){
