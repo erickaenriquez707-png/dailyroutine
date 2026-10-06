@@ -21,8 +21,11 @@ body{margin:0;background:var(--bg);color:var(--ink);font:400 16px/1.4 Figtree,sy
 .duehead{flex:1;display:flex;align-items:center;justify-content:center;gap:8px;padding:10px 16px;border:0;background:transparent;cursor:pointer;font-weight:700;min-height:44px;color:var(--ink)}
 .duehead[aria-expanded=true]{background:var(--bg)}
 .goalblock{border-top:1px solid var(--line);padding:10px 0}
-.goalhead{display:flex;align-items:center;justify-content:space-between;gap:8px;font-size:15px}
-.projrow{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:6px 0 6px 14px;font-size:14px;color:var(--mute)}
+.goalhead{display:flex;align-items:center;gap:8px;font-size:15px}
+.goalhead strong{flex:1}
+.projrow{display:flex;align-items:center;gap:8px;padding:6px 0 6px 14px;font-size:14px;color:var(--mute)}
+.projrow span{flex:1}
+.goalhead input[type=checkbox],.projrow input[type=checkbox]{width:20px;height:20px;flex:none}
 .duebadge{background:var(--relationship);color:#fff;border-radius:999px;padding:2px 9px;font-size:12px;min-width:20px;text-align:center}
 .duetab.empty .duebadge{background:var(--line);color:var(--mute)}
 .duelist{display:none;max-height:38vh;overflow-y:auto;padding:0 16px 12px;border-top:1px solid var(--line)}
@@ -74,7 +77,12 @@ form .add{background:var(--ink);color:var(--on);border:0;font-weight:600}
 .part small{margin-left:auto}
 .tasks.over-empty{background:var(--bg);border-radius:10px}
 .hint{padding:14px 4px;color:var(--mute);font-size:13px;border-top:1px dashed var(--line)}
-li.task{display:grid;grid-template-columns:22px minmax(64px,auto) 1fr auto;align-items:center;gap:10px;padding:12px 0;border-top:1px solid var(--line);position:relative}
+li.task{display:grid;grid-template-columns:22px minmax(64px,auto) 12px 1fr auto;align-items:center;gap:10px;padding:12px 0;border-top:1px solid var(--line);position:relative}
+li.task.notime{grid-template-columns:22px 12px 1fr auto}
+li.task.notime .time{display:none}
+.divider{cursor:pointer;color:var(--line);display:flex;align-items:center;justify-content:center;align-self:stretch}
+.divider:hover{color:var(--mute)}
+.divider::before{content:'';display:block;width:2px;height:60%;background:currentColor;border-radius:2px}
 li.task:last-child{border-bottom:1px solid var(--line)}
 .time{white-space:nowrap}
 .actions{display:flex;gap:4px;align-items:center}
@@ -82,7 +90,12 @@ li.task:last-child{border-bottom:1px solid var(--line)}
 .checklist{display:none;grid-column:1/-1;margin:8px 0 2px 32px}
 li.task.expanded .checklist{display:block}
 .checklist ul{list-style:none;margin:0;padding:0}
-.checklist li{display:flex;align-items:center;gap:8px;padding:4px 0}
+.checklist li{display:flex;align-items:center;gap:8px;padding:4px 0;position:relative}
+.checklist li.dragging{opacity:.4}
+.checklist li.over-top::before,.checklist li.over-bottom::after{content:"";position:absolute;left:0;right:0;height:2px;background:var(--ink);border-radius:2px}
+.checklist li.over-top::before{top:-1px}
+.checklist li.over-bottom::after{bottom:-1px}
+.subgrip{cursor:grab;color:var(--mute);font-size:14px;flex:none}
 .checklist input[type=checkbox]{width:18px;height:18px;flex:none}
 .checklist span{flex:1;overflow-wrap:anywhere}
 .subadd{display:flex;gap:6px;margin-top:4px}
@@ -108,7 +121,7 @@ li.done label span{text-decoration:line-through;color:var(--mute)}
 .del:hover{color:var(--ink)}
 .health{--c:var(--health)}.relationship{--c:var(--relationship)}.wealth{--c:var(--wealth)}.university{--c:var(--university)}
 .empty{text-align:center;color:var(--mute);padding:34px 8px;display:flex;flex-direction:column;align-items:center;gap:12px}
-@media(max-width:420px){.num{font-size:72px}li.task{grid-template-columns:18px minmax(50px,auto) 1fr auto}.time{font-size:12px}}
+@media(max-width:420px){.num{font-size:72px}li.task{grid-template-columns:18px minmax(50px,auto) 10px 1fr auto}li.task.notime{grid-template-columns:18px 10px 1fr auto}.time{font-size:12px}}
 @media(prefers-reduced-motion:reduce){.bar i{transition:none}}
 </style>
 </head>
@@ -161,6 +174,7 @@ li.done label span{text-decoration:line-through;color:var(--mute)}
       <option value="wealth">Wealth</option>
       <option value="university">University</option>
     </select>
+    <select id="goalSel" aria-label="Goal (optional)"><option value="">No goal</option></select>
     <select id="proj" aria-label="Project (optional)"><option value="">No project</option></select>
     <select id="sub" aria-label="Wealth subcategory" style="display:none">
       <option value="">General</option>
@@ -220,14 +234,13 @@ const wr=(k,v)=>{try{localStorage.setItem(k,JSON.stringify(v))}catch(e){}};
 let items=rd(key(date),[]),repeats=rd('routine:repeats',[]),doneR=rd('routine-done:'+ds(date),[]);
 let goals=rd('routine:goals',[]),projects=rd('routine:projects',[]);
 let hideDone=rd('routine:hideDone2',true);
-const FIREBASE_URL='https://coding-36d73-default-rtdb.asia-southeast1.firebasedatabase.app';
-let sharedData={},fbConnected=false;
-function fbWrite(k,v){return fetch(FIREBASE_URL+'/shared/'+k+'.json',{method:'PUT',body:JSON.stringify(v)}).catch(()=>{})}
-const save=()=>{wr(key(date),items);fbWrite('day_'+ds(date),{items})};
-const saveR=()=>{wr('routine:repeats',repeats);fbWrite('repeats',{list:repeats})};
-const saveD=()=>{wr('routine-done:'+ds(date),doneR);fbWrite('done_'+ds(date),{ids:doneR})};
-const saveGoals=()=>{wr('routine:goals',goals);fbWrite('goals',{list:goals})};
-const saveProjects=()=>{wr('routine:projects',projects);fbWrite('projects',{list:projects})};
+let hideTime=rd('routine:hideTime',false);
+let sharedCol=null,dbReady=false,unsubRepeats=null,unsubItems=null,unsubDone=null,unsubGoals=null,unsubProjects=null;
+const save=()=>{wr(key(date),items);if(dbReady)sharedCol.doc('day_'+ds(date)).set({items}).catch(()=>{})};
+const saveR=()=>{wr('routine:repeats',repeats);if(dbReady)sharedCol.doc('repeats').set({list:repeats}).catch(()=>{})};
+const saveD=()=>{wr('routine-done:'+ds(date),doneR);if(dbReady)sharedCol.doc('done_'+ds(date)).set({ids:doneR}).catch(()=>{})};
+const saveGoals=()=>{wr('routine:goals',goals);if(dbReady)sharedCol.doc('goals').set({list:goals}).catch(()=>{})};
+const saveProjects=()=>{wr('routine:projects',projects);if(dbReady)sharedCol.doc('projects').set({list:projects}).catch(()=>{})};
 const fmt=t=>{if(!t)return'Anytime';const[h,m]=t.split(':').map(Number);return(h%12||12)+':'+String(m).padStart(2,'0')+(h<12?' AM':' PM')};
 const fmt2=(t,t2)=>!t?'Anytime':t2?fmt(t)+' \u2013 '+fmt(t2):fmt(t);
 const dueInfo=due=>{
@@ -246,53 +259,61 @@ const applies=(r,d)=>{const s=ds(d),w=d.getDay();if(s<r.start||(r.end&&s>r.end))
   return r.rule==='range'||r.rule==='daily'||(r.rule==='weekdays'&&w>0&&w<6)||(r.rule==='weekends'&&(w===0||w===6))||(r.rule==='weekly'&&w===r.wd)||(r.rule==='monthly'&&d.getDate()===r.day);};
 const view=()=>items.map(i=>({...i,ref:i,rep:false,p:i.p||partOf(i.t)||'morning'}))
   .concat(repeats.filter(r=>applies(r,date)).map(r=>({...r,done:doneR.includes(r.id),ref:r,rep:true,p:r.p||partOf(r.t)||'morning'})));
-function go(d){date=d;calMonth=new Date(d);items=rd(key(d),[]);doneR=rd('routine-done:'+ds(d),[]);applySharedDay();render()}
+function go(d){date=d;calMonth=new Date(d);items=rd(key(d),[]);doneR=rd('routine-done:'+ds(d),[]);render();subscribeDay(d)}
 function shift(n){const d=new Date(date);d.setDate(d.getDate()+n);go(d)}
 
-function mirrorAll(){
-  Object.keys(sharedData).forEach(k=>{
-    const v=sharedData[k];
-    if(k==='repeats')wr('routine:repeats',v.list||[]);
-    else if(k==='goals')wr('routine:goals',v.list||[]);
-    else if(k==='projects')wr('routine:projects',v.list||[]);
-    else if(k.startsWith('day_'))wr('routine:'+k.slice(4),v.items||[]);
-    else if(k.startsWith('done_'))wr('routine-done:'+k.slice(5),v.ids||[]);
-  });
-  goals=rd('routine:goals',[]);projects=rd('routine:projects',[]);
+function subscribeRepeats(){
+  if(!dbReady)return;
+  if(unsubRepeats)unsubRepeats();
+  unsubRepeats=sharedCol.doc('repeats').onSnapshot(snap=>{
+    repeats=snap.exists?(snap.data().list||[]):[];wr('routine:repeats',repeats);render();
+  },()=>{});
 }
-function applySharedDay(){
-  const dstr=ds(date);
-  const dayNode=sharedData['day_'+dstr],doneNode=sharedData['done_'+dstr],repNode=sharedData['repeats'];
-  if(dayNode){items=dayNode.items||[];wr(key(date),items)}
-  if(doneNode){doneR=doneNode.ids||[];wr('routine-done:'+dstr,doneR)}
-  if(repNode){repeats=repNode.list||[];wr('routine:repeats',repeats)}
+function subscribeDay(d){
+  if(!dbReady)return;
+  const dstr=ds(d);
+  if(unsubItems)unsubItems();
+  if(unsubDone)unsubDone();
+  unsubItems=sharedCol.doc('day_'+dstr).onSnapshot(snap=>{
+    if(ds(date)!==dstr)return;
+    items=snap.exists?(snap.data().items||[]):[];wr(key(date),items);render();
+  },()=>{});
+  unsubDone=sharedCol.doc('done_'+dstr).onSnapshot(snap=>{
+    if(ds(date)!==dstr)return;
+    doneR=snap.exists?(snap.data().ids||[]):[];wr('routine-done:'+dstr,doneR);render();
+  },()=>{});
 }
-function handleFbEvent(path,data){
-  if(path==='/'){sharedData=data||{};mirrorAll()}
-  else{
-    const k=path.replace(/^\//,'').split('/')[0];
-    if(data===null)delete sharedData[k];else sharedData[k]=data;
-    if(k==='repeats')wr('routine:repeats',(sharedData[k]||{}).list||[]);
-    else if(k==='goals'){goals=(sharedData[k]||{}).list||[];wr('routine:goals',goals)}
-    else if(k==='projects'){projects=(sharedData[k]||{}).list||[];wr('routine:projects',projects)}
-    else if(k.startsWith('day_'))wr('routine:'+k.slice(4),(sharedData[k]||{}).items||[]);
-    else if(k.startsWith('done_'))wr('routine-done:'+k.slice(5),(sharedData[k]||{}).ids||[]);
-  }
-  applySharedDay();refreshProjectSelect();renderGoalsTab();render();
+function subscribeGoals(){
+  if(!dbReady)return;
+  if(unsubGoals)unsubGoals();
+  unsubGoals=sharedCol.doc('goals').onSnapshot(snap=>{
+    goals=snap.exists?(snap.data().list||[]):[];wr('routine:goals',goals);renderGoalsTab();refreshProjectSelect();
+  },()=>{});
 }
-function initSync(){
-  const lab=document.querySelector('.toggle-row .sum');
-  try{
-    const es=new EventSource(FIREBASE_URL+'/shared.json');
-    es.addEventListener('put',e=>{try{const d=JSON.parse(e.data);handleFbEvent(d.path,d.data);if(!fbConnected){fbConnected=true;if(lab)lab.textContent='Shared \u2014 synced live with everyone using this file'}}catch(err){}});
-    es.addEventListener('patch',e=>{try{const d=JSON.parse(e.data);handleFbEvent(d.path,d.data)}catch(err){}});
-    es.onerror=()=>{if(lab&&!fbConnected)lab.textContent='Saved on this device (reconnecting\u2026)'};
-  }catch(e){if(lab)lab.textContent='Saved on this device'}
+function subscribeProjects(){
+  if(!dbReady)return;
+  if(unsubProjects)unsubProjects();
+  unsubProjects=sharedCol.doc('projects').onSnapshot(snap=>{
+    projects=snap.exists?(snap.data().list||[]):[];wr('routine:projects',projects);renderGoalsTab();refreshProjectSelect();
+  },()=>{});
+}
+async function initSync(){
+  if(!window.claude)return;
+  const db=await window.claude.use('db');
+  if(!db)return;
+  sharedCol=db.collection('shared');
+  dbReady=true;
+  const lab=document.querySelector('.toggle-row .sum');if(lab)lab.textContent='Shared \u2014 live with everyone who has access';
+  subscribeRepeats();
+  subscribeDay(date);
+  subscribeGoals();
+  subscribeProjects();
 }
 
 let dragRef=null,dragEl=null;
+let expandedChecklists=new Set();
 function row(i){
-  const li=document.createElement('li');li.className='task '+i.cat+(i.done?' done':'');
+  const li=document.createElement('li');li.className='task '+i.cat+(i.done?' done':'')+(hideTime?' notime':'')+(expandedChecklists.has(i.id)?' expanded':'');
   li.dataset.p=i.p;
   const grip=document.createElement('div');grip.className='grip';grip.textContent='\u2261';grip.draggable=true;grip.setAttribute('aria-hidden','true');
   grip.addEventListener('dragstart',e=>{dragRef=i;dragEl=li;li.classList.add('dragging');e.dataTransfer.effectAllowed='move'});
@@ -305,10 +326,13 @@ function row(i){
     li.classList.remove('over-top','over-bottom');if(!dragRef||dragRef.id===i.id)return;
     dropOn(dragRef,i,before)});
   const time=document.createElement('div');time.className='time';time.textContent=fmt2(i.t,i.t2);
+  const divider=document.createElement('div');divider.className='divider';divider.title=hideTime?'Show time':'Hide time';
+  divider.setAttribute('role','button');divider.setAttribute('aria-label',hideTime?'Show time column':'Hide time column');
+  divider.onclick=()=>{hideTime=!hideTime;wr('routine:hideTime',hideTime);render()};
   const lab=document.createElement('label'),cb=document.createElement('input');cb.type='checkbox';cb.checked=i.done;
   cb.onchange=()=>{if(i.rep){doneR=cb.checked?doneR.concat(i.id):doneR.filter(z=>z!==i.id);saveD()}else{i.ref.done=cb.checked;save()}render()};
   const w=document.createElement('span'),em=document.createElement('em');
-  em.textContent=CATS[i.cat]+(i.sub?' \u00b7 '+i.sub:'')+(i.proj?' \u00b7 '+i.proj:'')+(i.rep?', '+ruleLabel(i):'');
+  em.textContent=(i.rep?'Habit':'Task')+' \u00b7 '+CATS[i.cat]+(i.sub?' \u00b7 '+i.sub:'')+(i.proj?' \u00b7 '+i.proj:'')+(i.rep?', '+ruleLabel(i):'');
   w.append(em,i.text);
   const dueI=dueInfo(i.due);
   if(dueI){const dc=document.createElement('span');dc.className='due '+dueI.cls;dc.textContent=dueI.label;w.appendChild(dc)}
@@ -319,7 +343,7 @@ function row(i){
     const chk=document.createElement('button');chk.type='button';chk.className='chk';
     chk.setAttribute('aria-label','Checklist for '+i.text);
     chk.textContent=list.length?list.filter(z=>z.done).length+'/'+list.length:'\u2611';
-    chk.onclick=()=>{li.classList.toggle('expanded')};
+    chk.onclick=()=>{if(expandedChecklists.has(i.id))expandedChecklists.delete(i.id);else expandedChecklists.add(i.id);render()};
     actions.appendChild(chk);
   }
   const edit=document.createElement('button');edit.type='button';edit.className='chk';edit.textContent='\u270e';
@@ -331,7 +355,7 @@ function row(i){
   del.title=i.rep?'Delete on every connected day':'Delete';
   del.onclick=()=>{if(i.rep)repeats=repeats.filter(z=>z.id!==i.ref.id);else items=items.filter(z=>z.id!==i.id);save();saveR();render()};
   actions.appendChild(del);
-  li.append(grip,time,lab,actions);
+  li.append(grip,time,divider,lab,actions);
 
   const ep=document.createElement('div');ep.className='editpanel';
   const eText=document.createElement('input');eText.type='text';eText.value=i.text;eText.maxLength=120;eText.setAttribute('aria-label','Edit task text');
@@ -347,8 +371,13 @@ function row(i){
   ['','Career','Education'].forEach(s=>{const o=document.createElement('option');o.value=s;o.textContent=s||'General';if(s===(i.sub||''))o.selected=true;eSub.appendChild(o)});
   eC.onchange=()=>{eSub.style.display=eC.value==='wealth'?'':'none'};
   const eDue=document.createElement('input');eDue.type='date';eDue.value=i.due||'';eDue.setAttribute('aria-label','Edit due date');
+  const existingProj=projects.find(p=>p.text===(i.proj||''));
+  const existingGoal=existingProj?existingProj.goal:'';
+  const eGoalSel=document.createElement('select');eGoalSel.setAttribute('aria-label','Edit goal');
+  eGoalSel.innerHTML=goalOptionsHTML(existingGoal);
   const eProj=document.createElement('select');eProj.setAttribute('aria-label','Edit project');
-  eProj.innerHTML='<option value="">No project</option>'+projects.map(p=>'<option value="'+p.text+'"'+(p.text===(i.proj||'')?' selected':'')+'>'+p.goal+' \u203a '+p.text+'</option>').join('');
+  eProj.innerHTML=projOptionsForGoal(existingGoal,i.proj||'');
+  eGoalSel.onchange=()=>{eProj.innerHTML=projOptionsForGoal(eGoalSel.value,'')};
   const eSave=document.createElement('button');eSave.type='button';eSave.className='btn add';eSave.textContent='Save changes';
   eSave.onclick=()=>{
     const t=eText.value.trim();if(!t)return;
@@ -357,24 +386,41 @@ function row(i){
     if(i.rep){saveR();li.classList.remove('editing');render();return}
     if(newDue&&newDue!==ds(date)){
       items=items.filter(z=>z.id!==i.ref.id);save();
-      const dkey='routine:'+newDue;const arr=rd(dkey,[]);arr.push(i.ref);wr(dkey,arr);fbWrite('day_'+newDue,{items:arr});
+      const dkey='routine:'+newDue;const arr=rd(dkey,[]);arr.push(i.ref);wr(dkey,arr);if(dbReady)sharedCol.doc('day_'+newDue).set({items:arr}).catch(()=>{});
       go(new Date(newDue+'T12:00'));return;
     }
     save();li.classList.remove('editing');render();
   };
-  ep.append(eText,eRow1,eP,eC,eSub,eProj,eDue,eSave);
+  ep.append(eText,eRow1,eP,eC,eSub,eGoalSel,eProj,eDue,eSave);
   li.appendChild(ep);
 
   const panel=document.createElement('div');panel.className='checklist';
   const subUl=document.createElement('ul');
+  let subDrag=null;
   list.forEach(s=>{
-    const sl=document.createElement('li');
+    const sl=document.createElement('li');sl.draggable=true;
+    const grip2=document.createElement('span');grip2.className='subgrip';grip2.textContent='\u2261';grip2.setAttribute('aria-hidden','true');
+    sl.addEventListener('dragstart',e=>{subDrag=s;sl.classList.add('dragging');e.stopPropagation()});
+    sl.addEventListener('dragend',e=>{sl.classList.remove('dragging');subDrag=null;e.stopPropagation()});
+    sl.addEventListener('dragover',e=>{if(!subDrag||subDrag.id===s.id)return;e.preventDefault();e.stopPropagation();
+      const mid=sl.getBoundingClientRect().top+sl.offsetHeight/2;
+      sl.classList.toggle('over-top',e.clientY<mid);sl.classList.toggle('over-bottom',e.clientY>=mid)});
+    sl.addEventListener('dragleave',e=>{sl.classList.remove('over-top','over-bottom')});
+    sl.addEventListener('drop',e=>{e.preventDefault();e.stopPropagation();const before=sl.classList.contains('over-top');
+      sl.classList.remove('over-top','over-bottom');if(!subDrag||subDrag.id===s.id)return;
+      const cl=(i.ref.checklist||[]).slice();
+      const from=cl.findIndex(z=>z.id===subDrag.id);if(from<0)return;
+      cl.splice(from,1);
+      let to=cl.findIndex(z=>z.id===s.id);if(to<0)to=cl.length;else if(!before)to+=1;
+      cl.splice(to,0,subDrag);
+      i.ref.checklist=cl;i.rep?saveR():save();render();
+    });
     const scb=document.createElement('input');scb.type='checkbox';scb.checked=s.done;
     scb.onchange=()=>{s.done=scb.checked;i.rep?saveR():save();render()};
     const stxt=document.createElement('span');stxt.textContent=s.text;if(s.done)stxt.style.textDecoration='line-through';
     const sdel=document.createElement('button');sdel.className='del';sdel.textContent='\u00d7';sdel.setAttribute('aria-label','Remove '+s.text);
     sdel.onclick=()=>{i.ref.checklist=(i.ref.checklist||[]).filter(z=>z.id!==s.id);i.rep?saveR():save();render()};
-    sl.append(scb,stxt,sdel);subUl.appendChild(sl);
+    sl.append(grip2,scb,stxt,sdel);subUl.appendChild(sl);
   });
   const addRow=document.createElement('div');addRow.className='subadd';
   const sin=document.createElement('input');sin.type='text';sin.placeholder='Add checklist item';sin.maxLength=80;
@@ -385,16 +431,21 @@ function row(i){
   return li;
 }
 
+function sortedGroup(pk){
+  return view().filter(z=>z.p===pk)
+    .map(z=>({...z,order:z.order??(z.t?(+z.t.slice(0,2)*60+ +z.t.slice(3,5)):99999)}))
+    .sort((a,b)=>a.order-b.order);
+}
 function moveToGroup(a,targetP){
   a.ref.p=targetP;
-  const list=view().filter(z=>z.p===targetP&&z.id!==a.id);
+  const list=sortedGroup(targetP).filter(z=>z.id!==a.id);
   list.forEach((z,n)=>{z.ref.order=n});
   a.ref.order=list.length;
   save();saveR();render();
 }
 function dropOn(a,b,before){
   a.ref.p=b.p;
-  const list=view().filter(z=>z.p===b.p&&z.id!==a.id);
+  const list=sortedGroup(b.p).filter(z=>z.id!==a.id);
   let j=list.findIndex(z=>z.id===b.id);
   if(j<0)j=list.length; else if(!before)j+=1;
   list.splice(j,0,a);
@@ -457,9 +508,27 @@ function projectStats(projText){
   repeats.forEach(r=>{if(r.proj===projText)total++});
   return{total,done};
 }
+const escHtml=s=>String(s).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;');
+function goalOptionsHTML(selected){
+  return '<option value="">No goal</option>'+goals.map(g=>'<option value="'+escHtml(g.text)+'"'+(g.text===selected?' selected':'')+'>'+escHtml(g.text)+'</option>').join('');
+}
+function projOptionsForGoal(goalText,selected){
+  const ps=projects.filter(p=>p.goal===goalText);
+  return '<option value="">No project</option>'+ps.map(p=>'<option value="'+escHtml(p.text)+'"'+(p.text===selected?' selected':'')+'>'+escHtml(p.text)+'</option>').join('');
+}
 function refreshProjectSelect(){
-  const opts='<option value="">No project</option>'+projects.map(p=>'<option value="'+p.text+'">'+p.goal+' \u203a '+p.text+'</option>').join('');
-  ['proj'].forEach(id=>{if($(id))$(id).innerHTML=opts});
+  if(!$('goalSel'))return;
+  const curGoal=$('goalSel').value;
+  $('goalSel').innerHTML=goalOptionsHTML(curGoal);
+  $('proj').innerHTML=projOptionsForGoal($('goalSel').value,'');
+}
+function projectStats2(projText){
+  let tTotal=0,tDone=0,hTotal=0;
+  Object.keys(localStorage).forEach(k=>{
+    if(/^routine:\d{4}-\d{2}-\d{2}$/.test(k)){rd(k,[]).forEach(it=>{if(it.proj===projText){tTotal++;if(it.done)tDone++}})}
+  });
+  repeats.forEach(r=>{if(r.proj===projText)hTotal++});
+  return{tTotal,tDone,hTotal};
 }
 function renderGoalsTab(){
   $('goalsCount').textContent=goals.length;
@@ -467,29 +536,35 @@ function renderGoalsTab(){
   const addRow=document.createElement('div');addRow.className='subadd';
   const gin=document.createElement('input');gin.type='text';gin.placeholder='New goal (e.g. Become financially independent)';gin.maxLength=100;
   const gbtn=document.createElement('button');gbtn.type='button';gbtn.className='btn';gbtn.textContent='Add goal';
-  const addGoal=()=>{const t=gin.value.trim();if(!t)return;goals.push({id:uid(),text:t});saveGoals();gin.value='';renderGoalsTab()};
+  const addGoal=()=>{const t=gin.value.trim();if(!t)return;goals.push({id:uid(),text:t,done:false});saveGoals();gin.value='';renderGoalsTab()};
   gbtn.onclick=addGoal;gin.onkeydown=e=>{if(e.key==='Enter'){e.preventDefault();addGoal()}};
   addRow.append(gin,gbtn);list.appendChild(addRow);
   if(!goals.length){const h=document.createElement('div');h.className='hint';h.textContent='No goals yet. Add one above \u2014 then group projects, tasks, and habits under it.';list.appendChild(h);return}
-  goals.forEach(g=>{
+  goals.slice().reverse().forEach(g=>{
     const gWrap=document.createElement('div');gWrap.className='goalblock';
     const gHead=document.createElement('div');gHead.className='goalhead';
-    const gTitle=document.createElement('strong');gTitle.textContent=g.text;
+    const gCb=document.createElement('input');gCb.type='checkbox';gCb.checked=!!g.done;gCb.setAttribute('aria-label','Mark goal '+g.text+' complete');
+    gCb.onchange=()=>{g.done=gCb.checked;saveGoals();renderGoalsTab()};
+    const gTitle=document.createElement('strong');gTitle.textContent=g.text;if(g.done){gTitle.style.textDecoration='line-through';gTitle.style.color='var(--mute)'}
     const gDel=document.createElement('button');gDel.className='del';gDel.textContent='\u00d7';gDel.setAttribute('aria-label','Delete goal '+g.text);
     gDel.onclick=()=>{goals=goals.filter(z=>z.id!==g.id);projects=projects.filter(z=>z.goal!==g.text);saveGoals();saveProjects();renderGoalsTab();refreshProjectSelect()};
-    gHead.append(gTitle,gDel);gWrap.appendChild(gHead);
+    gHead.append(gCb,gTitle,gDel);gWrap.appendChild(gHead);
     projects.filter(p=>p.goal===g.text).forEach(p=>{
-      const stats=projectStats(p.text);
+      const s=projectStats2(p.text);
       const pRow=document.createElement('div');pRow.className='projrow';
-      const pTxt=document.createElement('span');pTxt.textContent='\u2192 '+p.text+' ('+stats.done+'/'+stats.total+' done)';
+      const pCb=document.createElement('input');pCb.type='checkbox';pCb.checked=!!p.done;pCb.setAttribute('aria-label','Mark project '+p.text+' complete');
+      pCb.onchange=()=>{p.done=pCb.checked;saveProjects();renderGoalsTab()};
+      const pTxt=document.createElement('span');
+      pTxt.textContent='\u2192 '+p.text+' \u2014 '+s.tDone+'/'+s.tTotal+' tasks done, '+s.hTotal+' habit'+(s.hTotal===1?'':'s');
+      if(p.done)pTxt.style.textDecoration='line-through';
       const pDel=document.createElement('button');pDel.className='del';pDel.textContent='\u00d7';pDel.setAttribute('aria-label','Delete project '+p.text);
       pDel.onclick=()=>{projects=projects.filter(z=>z.id!==p.id);saveProjects();renderGoalsTab();refreshProjectSelect()};
-      pRow.append(pTxt,pDel);gWrap.appendChild(pRow);
+      pRow.append(pCb,pTxt,pDel);gWrap.appendChild(pRow);
     });
     const pAdd=document.createElement('div');pAdd.className='subadd';
     const pin=document.createElement('input');pin.type='text';pin.placeholder='New project under this goal';pin.maxLength=100;
     const pbtn=document.createElement('button');pbtn.type='button';pbtn.className='btn';pbtn.textContent='Add project';
-    const addProj=()=>{const t=pin.value.trim();if(!t)return;projects.push({id:uid(),text:t,goal:g.text});saveProjects();pin.value='';renderGoalsTab();refreshProjectSelect()};
+    const addProj=()=>{const t=pin.value.trim();if(!t)return;projects.push({id:uid(),text:t,goal:g.text,done:false});saveProjects();pin.value='';renderGoalsTab();refreshProjectSelect()};
     pbtn.onclick=addProj;pin.onkeydown=e=>{if(e.key==='Enter'){e.preventDefault();addProj()}};
     pAdd.append(pin,pbtn);gWrap.appendChild(pAdd);
     list.appendChild(gWrap);
@@ -570,7 +645,7 @@ $('f').addEventListener('submit',e=>{
   if(rule==='once'){
     const due=base.due;
     if(due&&due!==ds(date)){
-      const dkey='routine:'+due;const arr=rd(dkey,[]);arr.push({...base,done:false});wr(dkey,arr);fbWrite('day_'+due,{items:arr});landedOn=due;
+      const dkey='routine:'+due;const arr=rd(dkey,[]);arr.push({...base,done:false});wr(dkey,arr);if(dbReady)sharedCol.doc('day_'+due).set({items:arr}).catch(()=>{});landedOn=due;
     }else{items.push({...base,done:false});save()}
   }
   else if(rule==='range'){
@@ -582,7 +657,7 @@ $('f').addEventListener('submit',e=>{
     repeats.push({...base,rule,start:ds(date),day});saveR();
   }
   else{repeats.push({...base,rule,start:ds(date),wd:date.getDay()});saveR()}
-  $('x').value='';$('t2').value='';$('due').value='';
+  $('x').value='';$('t2').value='';$('due').value='';$('goalSel').value='';$('proj').innerHTML=projOptionsForGoal('','');
   if(landedOn){go(new Date(landedOn+'T12:00'))}else render();
   $('x').focus();
 });
@@ -609,6 +684,7 @@ function closeBottom(){
 $('dueToggle').onclick=()=>toggleBottom('due','dueToggle');
 $('goalsToggle').onclick=()=>toggleBottom('goals','goalsToggle');
 $('dueBackdrop').onclick=closeBottom;
+$('goalSel').addEventListener('change',()=>{$('proj').innerHTML=projOptionsForGoal($('goalSel').value,'')});
 refreshProjectSelect();
 renderGoalsTab();
 render();
