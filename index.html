@@ -160,6 +160,7 @@ li.done label span{text-decoration:line-through;color:var(--mute)}
       <button class="btn" id="hideBtn" aria-pressed="false">Hide completed</button>
     </div>
   </div>
+  <div class="sum" id="gcalDebug" style="font-family:monospace;white-space:pre-wrap"></div>
 
   <div class="tabs" id="tabs"></div>
 
@@ -248,6 +249,11 @@ const GACCOUNTS=[
   {n:1,clientId:'567508553975-lqleqjqovr9e8soiasplc2unh9mhtiv7.apps.googleusercontent.com',token:null,tokenClient:null,connected:false,email:null},
   {n:2,clientId:'569147599774-6r7bde7t9gdrtjbvidvspnh4m3mp67df.apps.googleusercontent.com',token:null,tokenClient:null,connected:false,email:null}
 ];
+function gcalLog(msg){
+  const el=$('gcalDebug');if(!el)return;
+  const line=new Date().toLocaleTimeString()+' \u2014 '+msg;
+  el.textContent=(el.textContent?el.textContent+'\n':'')+line;
+}
 function gcalBtnLabel(acc){
   if(!acc.connected)return'\ud83d\udd17 Connect Google account '+acc.n;
   return '\u2705 '+(acc.email||'Account '+acc.n)+' (click to log out)';
@@ -267,13 +273,15 @@ function initGCal(){
     if(gcalInitTries++<20)setTimeout(initGCal,500);
     return;
   }
+  gcalLog('Google script loaded. Attempting reconnect for any previously granted accounts\u2026');
   GACCOUNTS.forEach(acc=>{
     acc.tokenClient=google.accounts.oauth2.initTokenClient({
       client_id:acc.clientId,
       scope:'https://www.googleapis.com/auth/calendar.events https://www.googleapis.com/auth/userinfo.email',
       callback:(resp)=>{
-        if(resp.error){console.warn('GCal auth error',acc.n,resp);return}
+        if(resp.error){gcalLog('Account '+acc.n+': FAILED \u2014 error_subtype='+(resp.error_subtype||'(none)')+' error='+resp.error);return}
         acc.token=resp.access_token;acc.connected=true;
+        gcalLog('Account '+acc.n+': reconnected successfully.');
         wr(gcalGrantedKey(acc),true);
         const b=$('gcalBtn'+acc.n);if(b){b.textContent=gcalBtnLabel(acc);b.setAttribute('aria-pressed','true')}
         fetchGcalEmail(acc);
@@ -282,7 +290,8 @@ function initGCal(){
     });
     acc.email=rd(gcalEmailKey(acc),null);
     if(rd(gcalGrantedKey(acc),false)){
-      setTimeout(()=>{try{acc.tokenClient.requestAccessToken({prompt:''})}catch(e){}},300);
+      gcalLog('Account '+acc.n+': was previously connected, trying silent reconnect\u2026');
+      setTimeout(()=>{try{acc.tokenClient.requestAccessToken({prompt:''})}catch(e){gcalLog('Account '+acc.n+': threw '+e.message)}},300);
     }
   });
 }
