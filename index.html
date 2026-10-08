@@ -6,10 +6,10 @@
 <title>Daily Routine</title>
 <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,800&family=Figtree:wght@400;600&display=swap" rel="stylesheet">
 <style>
-:root{--bg:#F1F4F7;--card:#fff;--ink:#14213D;--mute:#5B667A;--line:#DCE2EA;--health:#12876A;--relationship:#C93A73;--wealth:#B98100;--university:#3B6FD6;--on:#fff;
+:root{--bg:#F1F4F7;--card:#fff;--ink:#14213D;--mute:#5B667A;--line:#DCE2EA;--health:#12876A;--relationship:#C93A73;--wealth:#B98100;--university:#3B6FD6;--calendar:#6B5CA5;--on:#fff;
 box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
-@media(prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#0E1526;--card:#172038;--ink:#EAF0FA;--mute:#98A4BB;--line:#2A3552;--health:#3FCFA5;--relationship:#F27AA6;--wealth:#F2BE3A;--university:#7FA6FF;--on:#0E1526}}
-:root[data-theme="dark"]{--bg:#0E1526;--card:#172038;--ink:#EAF0FA;--mute:#98A4BB;--line:#2A3552;--health:#3FCFA5;--relationship:#F27AA6;--wealth:#F2BE3A;--university:#7FA6FF;--on:#0E1526}
+@media(prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#0E1526;--card:#172038;--ink:#EAF0FA;--mute:#98A4BB;--line:#2A3552;--health:#3FCFA5;--relationship:#F27AA6;--wealth:#F2BE3A;--university:#7FA6FF;--calendar:#B3A5E8;--on:#0E1526}}
+:root[data-theme="dark"]{--bg:#0E1526;--card:#172038;--ink:#EAF0FA;--mute:#98A4BB;--line:#2A3552;--health:#3FCFA5;--relationship:#F27AA6;--wealth:#F2BE3A;--university:#7FA6FF;--calendar:#B3A5E8;--on:#0E1526}
 html{scroll-padding-top:env(safe-area-inset-top,0px)}
 *{box-sizing:border-box}
 body{margin:0;background:var(--bg);color:var(--ink);font:400 16px/1.4 Figtree,system-ui,sans-serif}
@@ -119,7 +119,7 @@ label em{font-style:normal;font-size:13px;color:var(--c);font-weight:600;display
 li.done label span{text-decoration:line-through;color:var(--mute)}
 .del{border:0;background:transparent;color:var(--mute);cursor:pointer;font-size:22px;line-height:1;padding:6px 10px;border-radius:8px}
 .del:hover{color:var(--ink)}
-.health{--c:var(--health)}.relationship{--c:var(--relationship)}.wealth{--c:var(--wealth)}.university{--c:var(--university)}
+.health{--c:var(--health)}.relationship{--c:var(--relationship)}.wealth{--c:var(--wealth)}.university{--c:var(--university)}.calendar{--c:var(--calendar)}
 .empty{text-align:center;color:var(--mute);padding:34px 8px;display:flex;flex-direction:column;align-items:center;gap:12px}
 @media(max-width:420px){.num{font-size:72px}li.task{grid-template-columns:18px minmax(50px,auto) 10px 1fr auto}li.task.notime{grid-template-columns:18px 10px 1fr auto}.time{font-size:12px}}
 @media(prefers-reduced-motion:reduce){.bar i{transition:none}}
@@ -180,6 +180,7 @@ li.done label span{text-decoration:line-through;color:var(--mute)}
       <option value="relationship">Relationship</option>
       <option value="wealth">Wealth</option>
       <option value="university">University</option>
+      <option value="calendar">Calendar</option>
     </select>
     <select id="goalSel" aria-label="Goal (optional)"><option value="">No goal</option></select>
     <select id="proj" aria-label="Project (optional)"><option value="">No project</option></select>
@@ -223,8 +224,8 @@ li.done label span{text-decoration:line-through;color:var(--mute)}
 </div>
 
 <script>
-const CATS={health:'Health',relationship:'Relationship',wealth:'Wealth',university:'University'};
-const PARTS=[['morning','Morning','5 AM to 11 AM'],['noon','Noon','11 AM to 2 PM'],['afternoon','Afternoon','2 PM to 6 PM'],['night','Evening','6 PM to 5 AM'],['unsorted','Unorganized','No time set']];
+const CATS={health:'Health',relationship:'Relationship',wealth:'Wealth',university:'University',calendar:'Calendar'};
+const PARTS=[['morning','Morning','4 AM to 11 AM'],['noon','Noon','11 AM to 1 PM'],['afternoon','Afternoon','1 PM to 6 PM'],['night','Evening','6 PM to 4 AM'],['unsorted','Unorganized','No time set']];
 const RULES={daily:'every day',weekdays:'weekdays',weekends:'weekends',weekly:'every week'};
 const monthShort=d=>d.toLocaleDateString('en-US',{month:'short',day:'numeric'});
 const fmtRange=(s,e)=>{const a=new Date(s+'T12:00'),b=new Date((e||s)+'T12:00');
@@ -244,10 +245,22 @@ let hideDone=rd('routine:hideDone2',true);
 let hideTime=rd('routine:hideTime',false);
 const FIREBASE_URL='https://coding-36d73-default-rtdb.asia-southeast1.firebasedatabase.app';
 const GACCOUNTS=[
-  {n:1,clientId:'567508553975-lqleqjqovr9e8soiasplc2unh9mhtiv7.apps.googleusercontent.com',token:null,tokenClient:null,connected:false},
-  {n:2,clientId:'569147599774-6r7bde7t9gdrtjbvidvspnh4m3mp67df.apps.googleusercontent.com',token:null,tokenClient:null,connected:false}
+  {n:1,clientId:'567508553975-lqleqjqovr9e8soiasplc2unh9mhtiv7.apps.googleusercontent.com',token:null,tokenClient:null,connected:false,email:null},
+  {n:2,clientId:'569147599774-6r7bde7t9gdrtjbvidvspnh4m3mp67df.apps.googleusercontent.com',token:null,tokenClient:null,connected:false,email:null}
 ];
-function gcalBtnLabel(acc){return acc.connected?'\u2705 Account '+acc.n+' connected':'\ud83d\udd17 Connect Google account '+acc.n}
+function gcalBtnLabel(acc){
+  if(!acc.connected)return'\ud83d\udd17 Connect Google account '+acc.n;
+  return '\u2705 '+(acc.email||'Account '+acc.n)+' (click to log out)';
+}
+function gcalGrantedKey(acc){return 'routine:gcalGranted'+acc.n}
+function gcalEmailKey(acc){return 'routine:gcalEmail'+acc.n}
+async function fetchGcalEmail(acc){
+  try{
+    const res=await fetch('https://www.googleapis.com/oauth2/v3/userinfo',{headers:{Authorization:'Bearer '+acc.token}});
+    if(res.ok){const d=await res.json();acc.email=d.email||null;if(acc.email)wr(gcalEmailKey(acc),acc.email)}
+  }catch(e){}
+  const b=$('gcalBtn'+acc.n);if(b)b.textContent=gcalBtnLabel(acc);
+}
 let gcalInitTries=0;
 function initGCal(){
   if(!window.google||!google.accounts||!google.accounts.oauth2){
@@ -257,15 +270,28 @@ function initGCal(){
   GACCOUNTS.forEach(acc=>{
     acc.tokenClient=google.accounts.oauth2.initTokenClient({
       client_id:acc.clientId,
-      scope:'https://www.googleapis.com/auth/calendar.events',
+      scope:'https://www.googleapis.com/auth/calendar.events https://www.googleapis.com/auth/userinfo.email',
       callback:(resp)=>{
         if(resp.error){console.warn('GCal auth error',acc.n,resp);return}
         acc.token=resp.access_token;acc.connected=true;
-        const b=$('gcalBtn'+acc.n);if(b)b.textContent=gcalBtnLabel(acc);
+        wr(gcalGrantedKey(acc),true);
+        const b=$('gcalBtn'+acc.n);if(b){b.textContent=gcalBtnLabel(acc);b.setAttribute('aria-pressed','true')}
+        fetchGcalEmail(acc);
         pullGCal(acc);
       }
     });
+    acc.email=rd(gcalEmailKey(acc),null);
+    if(rd(gcalGrantedKey(acc),false)){
+      setTimeout(()=>{try{acc.tokenClient.requestAccessToken({prompt:''})}catch(e){}},300);
+    }
   });
+}
+function gcalLogout(acc){
+  const tok=acc.token;
+  acc.token=null;acc.connected=false;acc.email=null;
+  wr(gcalGrantedKey(acc),false);wr(gcalEmailKey(acc),null);
+  const b=$('gcalBtn'+acc.n);if(b){b.textContent=gcalBtnLabel(acc);b.setAttribute('aria-pressed','false')}
+  if(tok&&window.google&&google.accounts&&google.accounts.oauth2)google.accounts.oauth2.revoke(tok,()=>{});
 }
 async function pullGCal(acc){
   if(!acc.token)return;
@@ -273,7 +299,25 @@ async function pullGCal(acc){
   const timeMax=new Date(Date.now()+30*86400000).toISOString();
   const url='https://www.googleapis.com/calendar/v3/calendars/primary/events?singleEvents=true&orderBy=startTime&timeMin='+encodeURIComponent(timeMin)+'&timeMax='+encodeURIComponent(timeMax);
   try{
-    const res=await fetch(url,{headers:{Authorization:'Bearer '+acc.token}});
+    let res=await fetch(url,{headers:{Authorization:'Bearer '+acc.token}});
+    if(res.status===401&&rd(gcalGrantedKey(acc),false)){
+      const retried=await new Promise(resolve=>{
+        let done=false;
+        const finish=v=>{if(done)return;done=true;acc.tokenClient.callback=prevCb;resolve(v)};
+        const prevCb=acc.tokenClient.callback;
+        setTimeout(()=>finish(false),6000);
+        try{
+          acc.tokenClient.callback=(resp)=>{
+            if(resp.error){finish(false);return}
+            acc.token=resp.access_token;acc.connected=true;
+            const b=$('gcalBtn'+acc.n);if(b)b.textContent=gcalBtnLabel(acc);
+            finish(true);
+          };
+          acc.tokenClient.requestAccessToken({prompt:''});
+        }catch(e){finish(false)}
+      });
+      if(retried)res=await fetch(url,{headers:{Authorization:'Bearer '+acc.token}});
+    }
     if(!res.ok){if(res.status===401){acc.connected=false;acc.token=null;const b=$('gcalBtn'+acc.n);if(b)b.textContent=gcalBtnLabel(acc)}return}
     const data=await res.json();
     (data.items||[]).forEach(ev=>{
@@ -284,7 +328,7 @@ async function pullGCal(acc){
       const dkey='routine:'+dateStr;
       const arr=rd(dkey,[]);
       if(arr.some(z=>(z.gcalIds||{})[acc.n]===ev.id))return;
-      arr.push({id:uid(),text:ev.summary||'(untitled event)',t,t2:'',cat:'health',sub:'',p:t?(partOf(t)||'morning'):'unsorted',due:'',proj:'',done:false,gcalIds:{[acc.n]:ev.id}});
+      arr.push({id:uid(),text:ev.summary||'(untitled event)',t,t2:'',cat:'calendar',sub:acc.email||('Account '+acc.n),p:t?(partOf(t)||'morning'):'unsorted',due:'',proj:'',done:false,gcalIds:{[acc.n]:ev.id}});
       wr(dkey,arr);
       if(dateStr===ds(date))items=rd(dkey,[]);
     });
@@ -319,6 +363,15 @@ async function pushGCalUpdateAll(item,dateStr){
 function startGcalPolling(){
   setInterval(()=>{GACCOUNTS.forEach(acc=>{if(acc.connected)pullGCal(acc)})},5*60*1000);
 }
+async function pushGCalCompleteAll(item){
+  if(!item.gcalIds)return;
+  const summary=(item.done?'\u2705 ':'')+item.text;
+  for(const acc of GACCOUNTS){
+    const evId=item.gcalIds[acc.n];
+    if(!acc.connected||!evId)continue;
+    try{await fetch('https://www.googleapis.com/calendar/v3/calendars/primary/events/'+evId,{method:'PATCH',headers:{Authorization:'Bearer '+acc.token,'Content-Type':'application/json'},body:JSON.stringify({summary})})}catch(e){}
+  }
+}
 async function pushGCalDeleteAll(item){
   if(!item.gcalIds)return;
   for(const acc of GACCOUNTS){
@@ -347,7 +400,7 @@ const dueInfo=due=>{
   return{label:days+' days left',cls:days<=3?'due-soon':'due-ok'};
 };
 const uid=()=>Date.now().toString(36)+Math.random().toString(36).slice(2,6);
-const partOf=t=>{if(!t)return null;const m=+t.slice(0,2)*60+ +t.slice(3,5);return m>=300&&m<660?'morning':m>=660&&m<840?'noon':m>=840&&m<1080?'afternoon':'night'};
+const partOf=t=>{if(!t)return null;const m=+t.slice(0,2)*60+ +t.slice(3,5);return m>=240&&m<660?'morning':m>=660&&m<780?'noon':m>=780&&m<1080?'afternoon':'night'};
 const applies=(r,d)=>{const s=ds(d),w=d.getDay();if(s<r.start||(r.end&&s>r.end))return false;
   return r.rule==='range'||r.rule==='daily'||(r.rule==='weekdays'&&w>0&&w<6)||(r.rule==='weekends'&&(w===0||w===6))||(r.rule==='weekly'&&w===r.wd)||(r.rule==='monthly'&&d.getDate()===r.day);};
 const view=()=>items.map(i=>({...i,ref:i,rep:false,p:i.p||partOf(i.t)||'morning'}))
@@ -416,7 +469,7 @@ function row(i){
   divider.setAttribute('role','button');divider.setAttribute('aria-label',hideTime?'Show time column':'Hide time column');
   divider.onclick=()=>{hideTime=!hideTime;wr('routine:hideTime',hideTime);render()};
   const lab=document.createElement('label'),cb=document.createElement('input');cb.type='checkbox';cb.checked=i.done;
-  cb.onchange=()=>{if(i.rep){doneR=cb.checked?doneR.concat(i.id):doneR.filter(z=>z!==i.id);saveD()}else{i.ref.done=cb.checked;save()}render()};
+  cb.onchange=()=>{if(i.rep){doneR=cb.checked?doneR.concat(i.id):doneR.filter(z=>z!==i.id);saveD()}else{i.ref.done=cb.checked;save();pushGCalCompleteAll(i.ref)}render()};
   const w=document.createElement('span'),em=document.createElement('em');
   em.textContent=(i.rep?'Habit':'Task')+' \u00b7 '+CATS[i.cat]+(i.sub?' \u00b7 '+i.sub:'')+(i.proj?' \u00b7 '+i.proj:'')+(i.rep?', '+ruleLabel(i):'');
   w.append(em,i.text);
@@ -806,8 +859,8 @@ $('calPrev').onclick=()=>{calMonth.setMonth(calMonth.getMonth()-1);renderCal()};
 $('calNext').onclick=()=>{calMonth.setMonth(calMonth.getMonth()+1);renderCal()};
 $('hideBtn').onclick=()=>{hideDone=!hideDone;wr('routine:hideDone2',hideDone);render()};
 $('icsBtn').onclick=downloadICS;
-$('gcalBtn1').onclick=()=>{const acc=GACCOUNTS[0];if(!acc.tokenClient){alert('Still loading Google sign-in, try again in a moment.');return}acc.tokenClient.requestAccessToken()};
-$('gcalBtn2').onclick=()=>{const acc=GACCOUNTS[1];if(!acc.tokenClient){alert('Still loading Google sign-in, try again in a moment.');return}acc.tokenClient.requestAccessToken()};
+$('gcalBtn1').onclick=()=>{const acc=GACCOUNTS[0];if(acc.connected){gcalLogout(acc);return}if(!acc.tokenClient){alert('Still loading Google sign-in, try again in a moment.');return}acc.tokenClient.requestAccessToken()};
+$('gcalBtn2').onclick=()=>{const acc=GACCOUNTS[1];if(acc.connected){gcalLogout(acc);return}if(!acc.tokenClient){alert('Still loading Google sign-in, try again in a moment.');return}acc.tokenClient.requestAccessToken()};
 $('gcalSyncNow').onclick=()=>{
   const any=GACCOUNTS.some(a=>a.connected);
   if(!any){alert('Connect a Google account first.');return}
