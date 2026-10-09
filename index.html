@@ -338,7 +338,7 @@ async function pullGCal(acc){
       const arr=rd(dkey,[]);
       if(arr.some(z=>(z.gcalIds||{})[acc.n]===ev.id))return;
       arr.push({id:uid(),text:ev.summary||'(untitled event)',t,t2:'',cat:'calendar',sub:acc.email||('Account '+acc.n),p:t?(partOf(t)||'morning'):'unsorted',due:'',proj:'',done:false,gcalIds:{[acc.n]:ev.id}});
-      wr(dkey,arr);
+      wr(dkey,arr);fbWrite('day_'+dateStr,{items:arr});
       if(dateStr===ds(date))items=rd(dkey,[]);
     });
     render();
