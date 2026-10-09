@@ -245,9 +245,10 @@ let goals=rd('routine:goals',[]),projects=rd('routine:projects',[]);
 let hideDone=rd('routine:hideDone2',true);
 let hideTime=rd('routine:hideTime',false);
 const FIREBASE_URL='https://coding-36d73-default-rtdb.asia-southeast1.firebasedatabase.app';
+const WORKER_URL='https://gentle-field-02e0dailyroutineauth.erickaenriquez707.workers.dev';
 const GACCOUNTS=[
-  {n:1,clientId:'567508553975-lqleqjqovr9e8soiasplc2unh9mhtiv7.apps.googleusercontent.com',token:null,tokenClient:null,connected:false,email:null},
-  {n:2,clientId:'569147599774-6r7bde7t9gdrtjbvidvspnh4m3mp67df.apps.googleusercontent.com',token:null,tokenClient:null,connected:false,email:null}
+  {n:1,clientId:'567508553975-lqleqjqovr9e8soiasplc2unh9mhtiv7.apps.googleusercontent.com',token:null,codeClient:null,connected:false,email:null},
+  {n:2,clientId:'569147599774-6r7bde7t9gdrtjbvidvspnh4m3mp67df.apps.googleusercontent.com',token:null,codeClient:null,connected:false,email:null}
 ];
 function gcalLog(msg){
   const el=$('gcalDebug');if(!el)return;
@@ -255,17 +256,37 @@ function gcalLog(msg){
   el.textContent=(el.textContent?el.textContent+'\n':'')+line;
 }
 function gcalBtnLabel(acc){
-  if(!acc.connected)return'\ud83d\udd17 Connect Google account '+acc.n;
+  if(!acc.connected)return'\ud83d\udd17 Set up Google account '+acc.n;
   return '\u2705 '+(acc.email||'Account '+acc.n)+' (click to log out)';
 }
-function gcalGrantedKey(acc){return 'routine:gcalGranted'+acc.n}
-function gcalEmailKey(acc){return 'routine:gcalEmail'+acc.n}
+async function getAccessToken(acc){
+  try{
+    const res=await fetch(WORKER_URL+'/token?account='+acc.n);
+    const data=await res.json();
+    if(data.access_token){acc.token=data.access_token;acc.connected=true;return data.access_token}
+  }catch(e){}
+  acc.connected=false;acc.token=null;
+  return null;
+}
 async function fetchGcalEmail(acc){
   try{
     const res=await fetch('https://www.googleapis.com/oauth2/v3/userinfo',{headers:{Authorization:'Bearer '+acc.token}});
-    if(res.ok){const d=await res.json();acc.email=d.email||null;if(acc.email)wr(gcalEmailKey(acc),acc.email)}
+    if(res.ok){const d=await res.json();acc.email=d.email||null}
   }catch(e){}
   const b=$('gcalBtn'+acc.n);if(b)b.textContent=gcalBtnLabel(acc);
+}
+async function tryAutoConnect(acc){
+  const tok=await getAccessToken(acc);
+  const b=$('gcalBtn'+acc.n);
+  if(tok){
+    gcalLog('Account '+acc.n+': connected via backend, no login needed.');
+    if(b){b.textContent=gcalBtnLabel(acc);b.setAttribute('aria-pressed','true')}
+    if(!acc.email)fetchGcalEmail(acc);
+    pullGCal(acc);
+  }else{
+    gcalLog('Account '+acc.n+': not set up yet.');
+    if(b){b.textContent=gcalBtnLabel(acc);b.setAttribute('aria-pressed','false')}
+  }
 }
 let gcalInitTries=0;
 function initGCal(){
@@ -273,61 +294,39 @@ function initGCal(){
     if(gcalInitTries++<20)setTimeout(initGCal,500);
     return;
   }
-  gcalLog('Google script loaded. Attempting reconnect for any previously granted accounts\u2026');
+  gcalLog('Checking backend for connected accounts\u2026');
   GACCOUNTS.forEach(acc=>{
-    acc.tokenClient=google.accounts.oauth2.initTokenClient({
+    acc.codeClient=google.accounts.oauth2.initCodeClient({
       client_id:acc.clientId,
       scope:'https://www.googleapis.com/auth/calendar.events https://www.googleapis.com/auth/userinfo.email',
-      callback:(resp)=>{
-        if(resp.error){gcalLog('Account '+acc.n+': FAILED \u2014 error_subtype='+(resp.error_subtype||'(none)')+' error='+resp.error);return}
-        acc.token=resp.access_token;acc.connected=true;
-        gcalLog('Account '+acc.n+': reconnected successfully.');
-        wr(gcalGrantedKey(acc),true);
-        const b=$('gcalBtn'+acc.n);if(b){b.textContent=gcalBtnLabel(acc);b.setAttribute('aria-pressed','true')}
-        fetchGcalEmail(acc);
-        pullGCal(acc);
+      ux_mode:'popup',
+      callback:async(resp)=>{
+        if(resp.error||!resp.code){gcalLog('Account '+acc.n+': setup FAILED \u2014 '+(resp.error||'no code returned'));return}
+        try{
+          const r=await fetch(WORKER_URL+'/callback?account='+acc.n+'&code='+encodeURIComponent(resp.code));
+          const data=await r.json();
+          if(data.ok){gcalLog('Account '+acc.n+': one-time setup complete.');tryAutoConnect(acc)}
+          else gcalLog('Account '+acc.n+': backend rejected code \u2014 '+JSON.stringify(data));
+        }catch(e){gcalLog('Account '+acc.n+': backend call failed \u2014 '+e.message)}
       }
     });
-    acc.email=rd(gcalEmailKey(acc),null);
-    if(rd(gcalGrantedKey(acc),false)){
-      gcalLog('Account '+acc.n+': was previously connected, trying silent reconnect\u2026');
-      setTimeout(()=>{try{acc.tokenClient.requestAccessToken({prompt:''})}catch(e){gcalLog('Account '+acc.n+': threw '+e.message)}},300);
-    }
+    tryAutoConnect(acc);
   });
 }
-function gcalLogout(acc){
-  const tok=acc.token;
+async function gcalLogout(acc){
   acc.token=null;acc.connected=false;acc.email=null;
-  wr(gcalGrantedKey(acc),false);wr(gcalEmailKey(acc),null);
+  try{await fetch(WORKER_URL+'/disconnect?account='+acc.n)}catch(e){}
   const b=$('gcalBtn'+acc.n);if(b){b.textContent=gcalBtnLabel(acc);b.setAttribute('aria-pressed','false')}
-  if(tok&&window.google&&google.accounts&&google.accounts.oauth2)google.accounts.oauth2.revoke(tok,()=>{});
 }
 async function pullGCal(acc){
-  if(!acc.token)return;
+  const tok=await getAccessToken(acc);
+  if(!tok)return;
   const timeMin=new Date(Date.now()-3*86400000).toISOString();
   const timeMax=new Date(Date.now()+30*86400000).toISOString();
   const url='https://www.googleapis.com/calendar/v3/calendars/primary/events?singleEvents=true&orderBy=startTime&timeMin='+encodeURIComponent(timeMin)+'&timeMax='+encodeURIComponent(timeMax);
   try{
-    let res=await fetch(url,{headers:{Authorization:'Bearer '+acc.token}});
-    if(res.status===401&&rd(gcalGrantedKey(acc),false)){
-      const retried=await new Promise(resolve=>{
-        let done=false;
-        const finish=v=>{if(done)return;done=true;acc.tokenClient.callback=prevCb;resolve(v)};
-        const prevCb=acc.tokenClient.callback;
-        setTimeout(()=>finish(false),6000);
-        try{
-          acc.tokenClient.callback=(resp)=>{
-            if(resp.error){finish(false);return}
-            acc.token=resp.access_token;acc.connected=true;
-            const b=$('gcalBtn'+acc.n);if(b)b.textContent=gcalBtnLabel(acc);
-            finish(true);
-          };
-          acc.tokenClient.requestAccessToken({prompt:''});
-        }catch(e){finish(false)}
-      });
-      if(retried)res=await fetch(url,{headers:{Authorization:'Bearer '+acc.token}});
-    }
-    if(!res.ok){if(res.status===401){acc.connected=false;acc.token=null;const b=$('gcalBtn'+acc.n);if(b)b.textContent=gcalBtnLabel(acc)}return}
+    const res=await fetch(url,{headers:{Authorization:'Bearer '+tok}});
+    if(!res.ok)return;
     const data=await res.json();
     (data.items||[]).forEach(ev=>{
       if(!ev.start||ev.status==='cancelled')return;
@@ -353,9 +352,10 @@ function gcalEventBody(item,dateStr){
 async function pushGCalCreateAll(item,dateStr){
   item.gcalIds=item.gcalIds||{};
   for(const acc of GACCOUNTS){
-    if(!acc.connected)continue;
+    const tok=await getAccessToken(acc);
+    if(!tok)continue;
     try{
-      const res=await fetch('https://www.googleapis.com/calendar/v3/calendars/primary/events',{method:'POST',headers:{Authorization:'Bearer '+acc.token,'Content-Type':'application/json'},body:JSON.stringify(gcalEventBody(item,dateStr))});
+      const res=await fetch('https://www.googleapis.com/calendar/v3/calendars/primary/events',{method:'POST',headers:{Authorization:'Bearer '+tok,'Content-Type':'application/json'},body:JSON.stringify(gcalEventBody(item,dateStr))});
       if(res.ok){const ev=await res.json();item.gcalIds[acc.n]=ev.id}
     }catch(e){}
   }
@@ -365,28 +365,34 @@ async function pushGCalUpdateAll(item,dateStr){
   if(!item.gcalIds)return;
   for(const acc of GACCOUNTS){
     const evId=item.gcalIds[acc.n];
-    if(!acc.connected||!evId)continue;
-    try{await fetch('https://www.googleapis.com/calendar/v3/calendars/primary/events/'+evId,{method:'PATCH',headers:{Authorization:'Bearer '+acc.token,'Content-Type':'application/json'},body:JSON.stringify(gcalEventBody(item,dateStr))})}catch(e){}
+    if(!evId)continue;
+    const tok=await getAccessToken(acc);
+    if(!tok)continue;
+    try{await fetch('https://www.googleapis.com/calendar/v3/calendars/primary/events/'+evId,{method:'PATCH',headers:{Authorization:'Bearer '+tok,'Content-Type':'application/json'},body:JSON.stringify(gcalEventBody(item,dateStr))})}catch(e){}
   }
 }
 function startGcalPolling(){
-  setInterval(()=>{GACCOUNTS.forEach(acc=>{if(acc.connected)pullGCal(acc)})},5*60*1000);
+  setInterval(()=>{GACCOUNTS.forEach(acc=>pullGCal(acc))},5*60*1000);
 }
 async function pushGCalCompleteAll(item){
   if(!item.gcalIds)return;
   const summary=(item.done?'\u2705 ':'')+item.text;
   for(const acc of GACCOUNTS){
     const evId=item.gcalIds[acc.n];
-    if(!acc.connected||!evId)continue;
-    try{await fetch('https://www.googleapis.com/calendar/v3/calendars/primary/events/'+evId,{method:'PATCH',headers:{Authorization:'Bearer '+acc.token,'Content-Type':'application/json'},body:JSON.stringify({summary})})}catch(e){}
+    if(!evId)continue;
+    const tok=await getAccessToken(acc);
+    if(!tok)continue;
+    try{await fetch('https://www.googleapis.com/calendar/v3/calendars/primary/events/'+evId,{method:'PATCH',headers:{Authorization:'Bearer '+tok,'Content-Type':'application/json'},body:JSON.stringify({summary})})}catch(e){}
   }
 }
 async function pushGCalDeleteAll(item){
   if(!item.gcalIds)return;
   for(const acc of GACCOUNTS){
     const evId=item.gcalIds[acc.n];
-    if(!acc.connected||!evId)continue;
-    try{await fetch('https://www.googleapis.com/calendar/v3/calendars/primary/events/'+evId,{method:'DELETE',headers:{Authorization:'Bearer '+acc.token}})}catch(e){}
+    if(!evId)continue;
+    const tok=await getAccessToken(acc);
+    if(!tok)continue;
+    try{await fetch('https://www.googleapis.com/calendar/v3/calendars/primary/events/'+evId,{method:'DELETE',headers:{Authorization:'Bearer '+tok}})}catch(e){}
   }
 }
 let sharedData={},fbConnected=false;
@@ -868,8 +874,8 @@ $('calPrev').onclick=()=>{calMonth.setMonth(calMonth.getMonth()-1);renderCal()};
 $('calNext').onclick=()=>{calMonth.setMonth(calMonth.getMonth()+1);renderCal()};
 $('hideBtn').onclick=()=>{hideDone=!hideDone;wr('routine:hideDone2',hideDone);render()};
 $('icsBtn').onclick=downloadICS;
-$('gcalBtn1').onclick=()=>{const acc=GACCOUNTS[0];if(acc.connected){gcalLogout(acc);return}if(!acc.tokenClient){alert('Still loading Google sign-in, try again in a moment.');return}acc.tokenClient.requestAccessToken()};
-$('gcalBtn2').onclick=()=>{const acc=GACCOUNTS[1];if(acc.connected){gcalLogout(acc);return}if(!acc.tokenClient){alert('Still loading Google sign-in, try again in a moment.');return}acc.tokenClient.requestAccessToken()};
+$('gcalBtn1').onclick=()=>{const acc=GACCOUNTS[0];if(acc.connected){gcalLogout(acc);return}if(!acc.codeClient){alert('Still loading Google sign-in, try again in a moment.');return}acc.codeClient.requestCode()};
+$('gcalBtn2').onclick=()=>{const acc=GACCOUNTS[1];if(acc.connected){gcalLogout(acc);return}if(!acc.codeClient){alert('Still loading Google sign-in, try again in a moment.');return}acc.codeClient.requestCode()};
 $('gcalSyncNow').onclick=()=>{
   const any=GACCOUNTS.some(a=>a.connected);
   if(!any){alert('Connect a Google account first.');return}
